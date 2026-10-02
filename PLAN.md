@@ -208,6 +208,19 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 - Le replayer publie, sans verrou, l'état de chaque voie (niveau, quelques centaines d'échantillons récents) pour l'affichage.
 - **Jalon :** les rendus sont fidèles à l'oreille, et les écarts mesurés restent sous un seuil sur la plupart des modules du corpus.
 
+**Résultats (03/10/2026).** Jalon atteint à la mesure. L'écoute reste à faire par JB.
+- Replayer maison (`src/replayer.rs`) : séquenceur, effets 0 à F et Exx (sauf E0, E3, EF et 8xx, ignorés), interpolation linéaire, stéréo à l'Amiga (gauche-droite-droite-gauche) avec séparation réglable. Rien n'est alloué dans le chemin audio.
+- Mixage par voie (coupure, solo, volume) et moniteur sans verrou (`src/monitor.rs`) : oscilloscope et niveau de chaque voie, plus le master, prêts pour l'interface.
+- Commandes : `smpltrckr play` (sortie audio, VU-mètres en texte) et `smpltrckr render` (WAV stéréo, ou une piste par voie avec `--stems`), avec `--mute`, `--solo`, `--volume`, `--separation`.
+- Comparaison avec libopenmpt (`scripts/compare-corpus.sh`), voie par voie, sur les 49 modules lisibles :
+  - **durées** : toutes à 0,5 % près, et chaque écart restant est expliqué. libopenmpt ajoute environ 0,1 s en fin de morceau. Il ignore aussi F00, que nous traitons comme un arrêt, comme ProTracker ;
+  - **enveloppes** (corrélation d'énergie par fenêtres de 5 ms, voie la moins fidèle de chaque module) : ≥ 0,98 pour 29 modules, 0,95 à 0,98 pour 7, 0,90 à 0,95 pour 5, sous 0,90 pour 8. Les cas examinés sous 0,90 sont des artefacts de mesure : sur une note tenue, la corrélation ne mesure que du bruit, alors que niveaux et périodes sont identiques. Les autres n'ont pas tous été examinés.
+- Écarts trouvés en route et réglés :
+  - libopenmpt joue par défaut les passages inaccessibles comme des sous-morceaux (d'où `--subsong 0`) ;
+  - libopenmpt arrondit la durée d'un tick à un nombre entier d'échantillons, d'où une légère dérive hors 125 BPM. Notre timing exact est plus proche de l'Amiga ;
+  - deux corrections du replayer : 9xx au-delà de la fin d'un sample bouclé joue la boucle, et E9x re-déclenche aussi au tick 0 sur une ligne sans note.
+- Outils de diagnostic dans `examples/` : `compare`, `isolate` (une voie seule), `trace` (positions), `periods` (période et volume tick par tick), `effects`, `odd_periods`.
+
 ### Phase 3 — L'agent compose seul (premier MVP)
 - Couche de commandes avec undo/redo et journal, et serveur MCP `smpltrckr mcp` en mode sans TUI : l'agent travaille directement sur des fichiers.
 - Générateur de samples (`sample_generate`) et import de WAV et d'AIFF, pour que l'agent ait de la matière sonore sans aide.
