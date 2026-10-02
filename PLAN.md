@@ -197,17 +197,23 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 ### Phase 2 — Le replayer
 - Replayer ProTracker, rendu WAV hors ligne (`smpltrckr render`).
 - Tests de comparaison avec libopenmpt (ou pt2-clone) sur le corpus.
+- Mixage par voie : coupure (mute), solo et volume de chaque voie. C'est peu de code dans le replayer, et ça sert à la fois à la TUI, à l'agent et au rendu WAV voie par voie.
+- Le replayer publie, sans verrou, l'état de chaque voie (niveau, quelques centaines d'échantillons récents) pour l'affichage.
 - **Jalon :** les rendus sont fidèles à l'oreille, et les écarts mesurés restent sous un seuil sur la plupart des modules du corpus.
 
 ### Phase 3 — L'agent compose seul (premier MVP)
 - Couche de commandes avec undo/redo et journal, et serveur MCP `smpltrckr mcp` en mode sans TUI : l'agent travaille directement sur des fichiers.
 - Générateur de samples (`sample_generate`) et import de WAV et d'AIFF, pour que l'agent ait de la matière sonore sans aide.
 - Ressources MCP pour l'agent : référence des effets ProTracker, gammes et accords.
+- Outils de mixage pour l'agent : `voice_mute`, `voice_solo`, `voice_volume`, et `render_wav` avec une option « une piste par voie ».
 - **Jalon (= premier MVP) :** à partir d'une consigne courte (« un morceau chiptune de 30 secondes en la mineur »), un agent crée un `.mod` de A à Z et rend le WAV. Le fichier se lit dans pt2-clone ou OpenMPT. Les traces de la session sont conservées.
 
 ### Phase 4 — MVP de la TUI
 - Éditeur de patterns (curseur, saisie de notes au clavier piano, numéro de sample, effets), liste d'ordre, liste de samples, lecture/arrêt, sauvegarde.
 - Raccourcis simples inspirés de ProTracker, réunis dans une seule table. La disposition du clavier est reportée.
+- **Un affichage par voie, dans sa colonne.** Sous chaque colonne du pattern, un VU-mètre simple et l'état de la voie (coupée, solo). Un **master** à droite.
+- **Mixage au clavier :** coupure, solo et volume de chaque voie (une touche par voie, comme les touches F1 à F4 de ProTracker), pour faire des mix.
+- **Contrôles :** sélection du sample courant, ouverture et enregistrement de fichiers (petit navigateur de fichiers en mode texte), chargement d'un sample WAV ou AIFF, réglages du sample (volume, finetune, boucle), tempo et vitesse.
 - **Jalon :** JB ouvre un morceau composé par l'agent, l'écoute, le retouche au clavier et l'enregistre.
 
 ### Phase 5 — Humain et agent en direct
@@ -216,7 +222,8 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 - **Jalon :** l'agent pose une base (rythme et basse) pendant que JB la retravaille à la main dans la même session.
 
 ### Phase 6 — Le look
-- Oscilloscopes par voie (Braille ou demi-blocs), VU-mètres en blocs de couleur, forme d'onde des samples en caractères.
+- **Forme d'onde de chaque voie, dans sa colonne,** avec un effet de particules : les crêtes projettent des points (Braille ou demi-blocs) qui retombent et s'estompent. Master à droite, avec la forme d'onde du mixage final.
+- VU-mètres en blocs de couleur, forme d'onde des samples en caractères.
 - Couleurs reprises du thème Omarchy actif. À vérifier : où et sous quelle forme Omarchy expose les couleurs du thème courant.
 - Écran d'accueil en ASCII art, et pourquoi pas un mode « démo » plein écran pendant la lecture (clin d'œil au rendu texte de VLC).
 
@@ -251,7 +258,7 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 
 *Tranchées le 02/10/2026 : rôle de l'agent, langage, clavier, fidélité Amiga, nombre de voies, samples, XM, nom, publication, mention de Claude dans les commits, modèle (voir « Décisions de JB » en tête du document).*
 
-Plus aucune question ouverte pour l'instant.
+1. **Le mixage est-il enregistré ?** Le `.mod` ne contient ni coupure ni volume par voie. On peut soit les garder pour la session seulement, soit les enregistrer dans un petit fichier à côté du morceau (`morceau.mod.smpltrckr`), soit les appliquer au moment du rendu WAV. Proposition : la session seulement au début, et le fichier à côté plus tard si le besoin se fait sentir.
 
 ---
 
