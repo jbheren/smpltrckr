@@ -32,6 +32,29 @@ pub fn name(index: usize) -> String {
     format!("{}{}", NAMES[index % 12], index / 12 + 1)
 }
 
+/// Octaves étendues 0 et 4, absentes de ProTracker mais écrites par FT2, OpenMPT…
+/// Les valeurs varient d'un logiciel à l'autre de une ou deux unités.
+const OCTAVE_0: [u16; 12] = [
+    1712, 1616, 1525, 1440, 1357, 1281, 1209, 1141, 1077, 1017, 961, 907,
+];
+const OCTAVE_4: [u16; 12] = [107, 101, 95, 90, 85, 80, 76, 71, 67, 64, 60, 57];
+
+/// Nom de la note jouée par une période trouvée dans un pattern, octaves étendues comprises.
+/// Les octaves 0 et 4 sont reconnues à une ou deux unités près (lecture seule).
+pub fn name_for_period(period: u16) -> Option<String> {
+    if let Some(i) = PERIODS.iter().position(|&p| p == period) {
+        return Some(name(i));
+    }
+    [(0, &OCTAVE_0, 2), (4, &OCTAVE_4, 1)]
+        .into_iter()
+        .find_map(|(octave, table, tolerance)| {
+            let i = table
+                .iter()
+                .position(|&p| p.abs_diff(period) <= tolerance)?;
+            Some(format!("{}{octave}", NAMES[i]))
+        })
+}
+
 /// Fréquence de lecture d'un sample (Hz) pour une période Amiga donnée.
 pub fn period_to_hz(period: u16) -> f64 {
     PAULA_CLOCK_PAL / (2.0 * period as f64)
@@ -49,6 +72,15 @@ mod tests {
         assert_eq!(parse("c-2"), Some(12));
         assert_eq!(parse("C-4"), None);
         assert_eq!(parse("H-1"), None);
+    }
+
+    #[test]
+    fn names_extended_octaves() {
+        assert_eq!(name_for_period(428).as_deref(), Some("C-2"));
+        assert_eq!(name_for_period(107).as_deref(), Some("C-4"));
+        assert_eq!(name_for_period(56).as_deref(), Some("B-4"));
+        assert_eq!(name_for_period(1211).as_deref(), Some("F#0"));
+        assert_eq!(name_for_period(1000), None);
     }
 
     #[test]

@@ -204,7 +204,14 @@ mod tests {
             .iter()
             .map(|c| c.symbol())
             .collect();
-        for expected in ["smpltrckr", "pattern 00", "voies", "00 │ A-1 01 ...", "espace lecture", "█"] {
+        for expected in [
+            "smpltrckr",
+            "pattern 00",
+            "voies",
+            "00 │ A-1 01 ...",
+            "espace lecture",
+            "█",
+        ] {
             assert!(screen.contains(expected), "absent de l'écran : {expected}");
         }
     }

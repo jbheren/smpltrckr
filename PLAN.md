@@ -195,6 +195,12 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 - Corpus de test (quelques dizaines de modules de The Mod Archive, variantes M.K., FLT4, 8CHN).
 - **Jalon :** sur tout le corpus, un module chargé puis réenregistré est **identique à l'octet près**. *(C'est la condition de la note pour passer au statut de chantier.)*
 
+**Résultats (02/10/2026).** Jalon atteint.
+- Corpus de 50 `.mod` tirés au hasard sur The Mod Archive (`scripts/fetch-corpus.py`). Les modules restent hors du dépôt, à cause de leurs droits ; seuls leurs identifiants sont versionnés dans `tests/corpus-ids.txt`. Le corpus contient 47 `M.K.`, un `8CHN` et un Soundtracker 15 samples. **49 modules sur 49 reviennent identiques à l'octet près** (`smpltrckr roundtrip`, et le test `tests/corpus.rs`). Le 50ᵉ, compressé avec PowerPacker, est refusé avec un message clair.
+- Les variantes `M!K!`, `FLT4`, `6CHN`, `8CHN` et `12CH` sont couvertes par des tests synthétiques. `FLT8` est refusé, faute d'exemple réel.
+- Pour garantir l'aller-retour exact, le modèle garde tout ce qui est brut : noms sur 22 octets, positions d'ordre inutilisées, samples tronqués, octets en fin de fichier.
+- Notation texte : `smpltrckr dump`, plus la lecture d'une cellule, d'une ligne ou d'un pattern, prête pour les outils MCP. Des notes des octaves 0 et 4, écrites par FT2 ou OpenMPT, apparaissent dans 6 modules du corpus. Elles s'affichent (`C-4`) mais ne s'écrivent pas : l'agent reste dans les octaves 1 à 3 de ProTracker.
+
 ### Phase 2 — Le replayer
 - Replayer ProTracker, rendu WAV hors ligne (`smpltrckr render`).
 - Tests de comparaison avec libopenmpt (ou pt2-clone) sur le corpus.
