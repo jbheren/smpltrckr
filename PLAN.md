@@ -22,6 +22,7 @@ Ce document est une **proposition à discuter**. Les choix marqués « recommand
 - **XM serait un vrai plus.** Ce n'est pas dans le MVP, mais le modèle de données ne doit pas le rendre impossible.
 - **Le nom `smpltrckr` reste**, au moins pour l'instant.
 - **On commence avec Claude** comme agent. Un modèle local pourra être testé plus tard (cf. [[Stack IA locale]]).
+- **Le mixage par voie (coupure, solo, volume) vaut pour la session seulement**, puisque le `.mod` ne le stocke pas. Un petit fichier à côté du morceau pourra venir plus tard si le besoin se fait sentir.
 - **Dépôt public à la fin, sur le compte GitHub `jbheren`**, avec des commits au nom de JB (voir § 9).
 
 ---
@@ -256,9 +257,9 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 
 ## 8. Questions ouvertes pour JB
 
-*Tranchées le 02/10/2026 : rôle de l'agent, langage, clavier, fidélité Amiga, nombre de voies, samples, XM, nom, publication, mention de Claude dans les commits, modèle (voir « Décisions de JB » en tête du document).*
+*Tranchées le 02/10/2026 : rôle de l'agent, langage, clavier, fidélité Amiga, nombre de voies, samples, XM, nom, publication, mention de Claude dans les commits, modèle, enregistrement du mixage (voir « Décisions de JB » en tête du document).*
 
-1. **Le mixage est-il enregistré ?** Le `.mod` ne contient ni coupure ni volume par voie. On peut soit les garder pour la session seulement, soit les enregistrer dans un petit fichier à côté du morceau (`morceau.mod.smpltrckr`), soit les appliquer au moment du rendu WAV. Proposition : la session seulement au début, et le fichier à côté plus tard si le besoin se fait sentir.
+Plus aucune question ouverte pour l'instant.
 
 ---
 
