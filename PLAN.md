@@ -181,6 +181,13 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 - **Jalon :** les trois briques (TUI, son, MCP) fonctionnent séparément sur le poste de JB.
 - *En option, en parallèle :* tester le fork MCP de ft2-clone pour voir comment un agent s'y prend pour composer. Ce qu'on apprend nourrira la conception des outils MCP.
 
+**Résultats (02/10/2026).** Le jalon est atteint, sauf le pont vers un socket, reporté à la phase 5 où il sert vraiment.
+- Pile : Rust 1.99, installé via mise et épinglé dans `mise.toml`. Ratatui 0.30, cpal 0.18, rmcp 3.5.
+- `smpltrckr tone` : passe par ALSA, puis par PipeWire grâce à sa couche ALSA. Mesures sur 4 s : 48 kHz en flottant 32 bits, tampons de 512 trames (10,7 ms), latence estimée 32 ms, au plus 245 µs de calcul par callback (version de debug), aucune erreur ni décrochage. Reste à confirmer à l'oreille. cpal 0.18 a aussi un backend PipeWire natif (option `pipewire`), à essayer si la latence devient gênante.
+- `smpltrckr ui` : maquette de l'écran (pattern 4 voies qui défile, VU-mètres en blocs de couleur). Un test vérifie le rendu.
+- `smpltrckr mcp` : serveur stdio avec deux outils de test (`ping`, `note_info`), déclaré dans `.mcp.json`. Claude Code s'y connecte et appelle les outils.
+- Le test optionnel du fork ft2-clone n'a pas été fait.
+
 ### Phase 1 — Le format `.mod`
 - Parseur et écrivain `.mod`, et conversion vers/depuis la notation texte.
 - Outils en ligne de commande : `smpltrckr dump fichier.mod` (texte) et `smpltrckr roundtrip fichier.mod`.

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "smpltrckr": {
+      "command": "./target/debug/smpltrckr",
+      "args": ["mcp"]
+    }
+  }
+}
