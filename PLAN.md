@@ -257,7 +257,8 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 - Les modifications de l'agent s'affichent en direct, avec une marque visuelle et l'historique.
 - **Jalon :** l'agent pose une base (rythme et basse) pendant que JB la retravaille à la main dans la même session.
 
-**Résultats (03/10/2026).** Mécanique en place et vérifiée de bout en bout. Le jalon reste à vivre par JB.
+**Résultats (03/10/2026).** Jalon atteint, à la main et à deux : JB trouve l'essai « vraiment concluant ».
+- Première session à deux, sur « Duo en la mineur ». L'agent (cette session Claude, passée par `smpltrckr mcp`) a posé la batterie, la charleston et la basse (la mineur, fa, do, sol). JB a écrit la mélodie sur la voie 4, avec sa propre sinusoïde. À sa demande, l'agent a ajouté des glissés (310) sur la mélodie, renommé le sample (« Thérémine de bord »), puis écrit une contre-mélodie dans un pattern 01 qui remplace la charleston (4 voies obligent).
 - Une seule boucle possède le morceau : celle de l'interface. `src/session.rs` regroupe le morceau, son fichier, l'état « non enregistré » et la position de l'utilisateur. L'agent n'y touche que par des travaux (jobs) exécutés par l'interface entre deux images.
 - L'interface ouvre un socket local (`$XDG_RUNTIME_DIR/smpltrckr.sock`, ou `SMPLTRCKR_SOCKET`) et y fait tourner le serveur MCP. `smpltrckr mcp` sert de relais stdio vers ce socket quand une interface est ouverte, et retombe sinon sur le mode sans écran. `ping` dit à l'agent dans quel mode il est.
 - À l'écran : les cellules écrites par l'agent sont teintées de vert pendant 20 s, la ligne d'état dit ce qu'il vient de faire, une pastille « agent » s'allume dans l'en-tête, et le journal (F8) montre qui a fait quoi. Le son suit en direct, même pendant la lecture.
