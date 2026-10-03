@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use smpltrckr::replayer::{Mixer, Replayer};
-use smpltrckr::{audio, format, mcp, monitor, render, song, tone, ui, wav};
+use smpltrckr::{audio, format, mcp, monitor, render, song, tone, tui, wav};
 
 #[derive(Parser)]
 #[command(
@@ -22,8 +22,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Affiche une maquette d'interface Ratatui (q pour quitter).
-    Ui,
+    /// Ouvre l'éditeur en mode texte (« ? » pour l'aide). Le fichier est créé à
+    /// l'enregistrement s'il n'existe pas.
+    #[command(alias = "ui")]
+    Edit { file: Option<PathBuf> },
     /// Joue un son de test et mesure latence et décrochages audio.
     Tone {
         /// Durée de lecture en secondes.
@@ -126,7 +128,7 @@ impl MixArgs {
 
 fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
-        Command::Ui => ui::run(),
+        Command::Edit { file } => tui::run(file),
         Command::Tone { seconds } => tone::run(seconds),
         Command::Mcp => mcp::run(),
         Command::Dump { file, pattern } => dump(&file, pattern),

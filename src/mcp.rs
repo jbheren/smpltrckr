@@ -12,7 +12,7 @@ use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::editor::{Change, Editor, Origin};
+use crate::editor::{Change, Editor, Origin, journal_path, journal_text};
 use crate::format::{protracker, text};
 use crate::replayer::Replayer;
 use crate::song::{Pattern, Song};
@@ -676,51 +676,6 @@ impl Tracker {
     }
 }
 
-fn journal_path(path: &Path) -> PathBuf {
-    let mut name = path.as_os_str().to_owned();
-    name.push(".journal.txt");
-    PathBuf::from(name)
-}
-
-fn journal_text(editor: &Editor) -> String {
-    editor
-        .journal()
-        .iter()
-        .map(|e| {
-            let secs = e
-                .time
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| d.as_secs());
-            let who = match e.origin {
-                Origin::Agent => "agent",
-                Origin::Keyboard => "clavier",
-            };
-            format!("{} {who:7} {}\n", format_time(secs), e.text)
-        })
-        .collect()
-}
-
-/// Heure UTC `AAAA-MM-JJ hh:mm:ss UTC`, sans dépendance de date.
-fn format_time(secs: u64) -> String {
-    let (days, rest) = (secs / 86400, secs % 86400);
-    // Jours depuis 1970 → date civile (algorithme de Howard Hinnant).
-    let z = days as i64 + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
-    format!(
-        "{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02} UTC",
-        rest / 3600,
-        rest / 60 % 60,
-        rest % 60
-    )
-}
-
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for Tracker {
     fn get_info(&self) -> ServerConfig {
@@ -741,23 +696,4 @@ pub fn run() -> anyhow::Result<()> {
         service.waiting().await?;
         Ok(())
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn formats_dates() {
-        assert_eq!(format_time(0), "1970-01-01 00:00:00 UTC");
-        assert_eq!(format_time(1_790_000_000), "2026-09-21 14:13:20 UTC");
-    }
-
-    #[test]
-    fn journal_sits_next_to_the_song() {
-        assert_eq!(
-            journal_path(Path::new("/tmp/a.mod")),
-            PathBuf::from("/tmp/a.mod.journal.txt")
-        );
-    }
 }

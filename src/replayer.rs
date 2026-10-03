@@ -106,6 +106,11 @@ pub struct Replayer {
     /// Lignes déjà jouées (position × 64 + ligne), pour détecter la fin du morceau.
     visited: Vec<bool>,
     ended: bool,
+    /// Faux quand la lecture est arrêtée : le séquenceur ne bouge plus, mais les notes
+    /// jouées à la main (`jam`) sonnent toujours.
+    running: bool,
+    /// Rejoue la même position en boucle (lecture d'un pattern).
+    loop_pattern: bool,
 }
 
 impl Replayer {
@@ -129,6 +134,8 @@ impl Replayer {
             voice_out: vec![0.0; channels],
             visited: vec![false; 128 * 64],
             ended: false,
+            running: true,
+            loop_pattern: false,
             song,
         };
         replayer.skip_invalid_positions();
@@ -148,6 +155,77 @@ impl Replayer {
 
     pub fn position(&self) -> (usize, usize) {
         (self.position, self.row)
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.running
+    }
+
+    /// Vitesse (ticks par ligne) et tempo (BPM) courants.
+    pub fn tempo(&self) -> (u32, u32) {
+        (self.speed, self.bpm)
+    }
+
+    /// Remplace le morceau en cours de lecture (après une modification), sans interrompre
+    /// le son. Le nombre de voies ne doit pas changer.
+    pub fn set_song(&mut self, song: Arc<Song>) {
+        debug_assert_eq!(song.channels, self.voices.len());
+        self.song = song;
+        self.skip_invalid_positions();
+    }
+
+    /// Lance la lecture à une position de la liste d'ordre, ou d'un seul pattern en boucle.
+    /// Vitesse et tempo sont ceux que fixent les Fxx des positions précédentes.
+    pub fn play(&mut self, position: usize, loop_pattern: bool) {
+        let (mut speed, mut bpm) = (6, 125);
+        for &p in &self.song.orders[..position.min(self.song.order_list().len())] {
+            for cell in self
+                .song
+                .patterns
+                .get(p as usize)
+                .iter()
+                .flat_map(|p| p.rows.iter().flatten())
+            {
+                match (cell.effect, cell.param) {
+                    (0xF, 1..=0x1F) => speed = cell.param as u32,
+                    (0xF, 0x20..) => bpm = cell.param as u32,
+                    _ => {}
+                }
+            }
+        }
+        (self.speed, self.bpm) = (speed, bpm);
+        (self.position, self.row, self.tick, self.tick_frames_left) = (position, 0, 0, 0.0);
+        (self.jump_position, self.jump_row) = (None, None);
+        (self.pattern_delay, self.in_pattern_delay) = (0, false);
+        self.visited.fill(false);
+        self.ended = false;
+        self.loop_pattern = loop_pattern;
+        self.voices.iter_mut().for_each(|v| *v = Voice::default());
+        self.skip_invalid_positions();
+        self.running = true;
+    }
+
+    /// Arrête la lecture et coupe toutes les voies.
+    pub fn stop(&mut self) {
+        self.running = false;
+        self.voices.iter_mut().for_each(|v| v.playing = false);
+    }
+
+    /// Joue une note à la main sur une voie (saisie au clavier), lecture lancée ou non.
+    pub fn jam(&mut self, voice: usize, sample: usize, period: u16) {
+        let song = self.song.clone();
+        let Some(s) = song.samples.get(sample.wrapping_sub(1)) else {
+            return;
+        };
+        let v = &mut self.voices[voice];
+        v.sample = sample;
+        v.volume = s.volume.min(64) as i32;
+        v.out_volume = v.volume;
+        v.finetune = s.finetune();
+        v.period = finetuned(period, v.finetune);
+        v.out_period = v.period;
+        v.cell = Cell::default();
+        trigger(v, &song);
     }
 
     /// État d'une voie : sample, période jouée et volume joué (pour l'affichage et le débogage).
@@ -202,7 +280,7 @@ impl Replayer {
     }
 
     fn next_frame(&mut self) {
-        if self.tick_frames_left <= 0.0 {
+        if self.running && self.tick_frames_left <= 0.0 {
             self.do_tick();
             // Durée d'un tick ProTracker : 2,5 / BPM secondes.
             self.tick_frames_left += self.rate * 2.5 / self.bpm as f64;
@@ -272,6 +350,7 @@ impl Replayer {
             return;
         }
         self.in_pattern_delay = false;
+        let current = self.position;
 
         let rows = self
             .song
@@ -289,6 +368,12 @@ impl Replayer {
             (pos, row) => {
                 self.position = pos.unwrap_or(self.position + 1);
                 self.row = row.unwrap_or(0);
+            }
+        }
+        if self.loop_pattern {
+            self.position = current;
+            if self.row == 0 {
+                self.visited.fill(false);
             }
         }
         self.skip_invalid_positions();
@@ -763,6 +848,52 @@ mod tests {
         song.samples[0].data.truncate(8);
         // Tick 0 de la ligne 1 : de 120 à 140 ms.
         assert!(peak_between(Arc::new(song), 0.1195, 0.1225) > 0.1);
+    }
+
+    #[test]
+    fn stopped_replayer_only_plays_jammed_notes() {
+        let mut r = Replayer::new(
+            song_with("00 | C-2 01 ... | ... .. ... | ... .. ... | ... .. ..."),
+            44100,
+        );
+        r.stop();
+        let mut out = vec![0.0f32; 2 * 4410];
+        r.process(&mut out);
+        assert!(out.iter().all(|&x| x == 0.0));
+        assert_eq!(r.position(), (0, 0));
+        r.jam(1, 1, 428);
+        r.process(&mut out);
+        assert!(out.iter().any(|&x| x != 0.0));
+        assert_eq!(r.position(), (0, 0));
+    }
+
+    #[test]
+    fn pattern_loop_mode_stays_on_one_position() {
+        let mut song =
+            (*song_with("00 | C-2 01 ... | ... .. ... | ... .. ... | ... .. ...")).clone();
+        song.patterns.push(Pattern::new(64, 4));
+        song.song_length = 2;
+        song.orders[1] = 1;
+        let mut r = Replayer::new(Arc::new(song), 1000);
+        r.play(1, true);
+        let mut out = vec![0.0f32; 2 * 1000 * 10];
+        r.process(&mut out);
+        assert_eq!(r.position().0, 1);
+        r.play(0, false);
+        r.process(&mut out);
+        assert_eq!(r.position().0, 1);
+    }
+
+    #[test]
+    fn play_from_a_position_picks_up_earlier_tempo() {
+        let mut song =
+            (*song_with("00 | ... .. F03 | ... .. F90 | ... .. ... | ... .. ...")).clone();
+        song.patterns.push(Pattern::new(64, 4));
+        song.song_length = 2;
+        song.orders[1] = 1;
+        let mut r = Replayer::new(Arc::new(song), 1000);
+        r.play(1, false);
+        assert_eq!(r.tempo(), (3, 0x90));
     }
 
     #[test]

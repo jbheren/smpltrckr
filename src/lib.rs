@@ -12,5 +12,5 @@ pub mod replayer;
 pub mod samples;
 pub mod song;
 pub mod tone;
-pub mod ui;
+pub mod tui;
 pub mod wav;

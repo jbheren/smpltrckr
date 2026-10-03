@@ -242,6 +242,15 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 - **Contrôles :** sélection du sample courant, ouverture et enregistrement de fichiers (petit navigateur de fichiers en mode texte), chargement d'un sample WAV ou AIFF, réglages du sample (volume, finetune, boucle), tempo et vitesse.
 - **Jalon :** JB ouvre un morceau composé par l'agent, l'écoute, le retouche au clavier et l'enregistre.
 
+**Résultats (03/10/2026).** Interface en place, jalon à valider par JB au clavier.
+- `smpltrckr edit [fichier.mod]` (`src/tui/`). Pattern centré sur le curseur ; un VU-mètre, le volume et l'état (coupée, SOLO) sous chaque voie ; master à droite. Liste d'ordre et samples dans des panneaux (F6, F7) ; cadre rouge en mode édition, comme dans ProTracker.
+- Saisie au clavier piano (QWERTY physique, deux octaves, F1/F2 pour l'octave), sample en décimal et effet en hexadécimal dans leurs colonnes, insertion et suppression de lignes. Les notes sonnent pendant la saisie, même à l'arrêt.
+- Lecture du morceau (Entrée) ou d'un pattern en boucle (Ctrl+P), édition possible pendant la lecture (le curseur suit). Coupure, solo et volume par voie (Alt+1…8, Alt+S, Alt+↑↓).
+- Samples : volume, finetune, génération, chargement WAV/AIFF via un petit navigateur de fichiers, renommage, écoute. Fichiers : ouvrir, enregistrer, enregistrer sous (avec le journal), annuler et rétablir, confirmation avant de perdre des modifications.
+- Tous les raccourcis sont dans une seule table (`src/tui/keys.rs`), affichée par « ? ».
+- 56 tests, dont des tests d'écran (sans terminal). Scénario complet vérifié sur le vrai binaire, dans un terminal simulé, sur le morceau de l'agent : notes saisies, lecture, arrêt, enregistrement sous un autre nom, journal « clavier ».
+- Limite connue : le clavier piano suit les touches d'un clavier QWERTY. Sur un clavier AZERTY, les notes ne tombent pas aux bonnes places (disposition reportée, cf. décisions).
+
 ### Phase 5 — Humain et agent en direct
 - La TUI ouvre son socket. Le pont `smpltrckr mcp` s'y connecte quand une instance tourne, et reste en mode sans TUI sinon.
 - Les modifications de l'agent s'affichent en direct, avec une marque visuelle et l'historique.
