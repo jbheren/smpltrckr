@@ -25,7 +25,12 @@ enum Command {
     /// Ouvre l'éditeur en mode texte (« ? » pour l'aide). Le fichier est créé à
     /// l'enregistrement s'il n'existe pas.
     #[command(alias = "ui")]
-    Edit { file: Option<PathBuf> },
+    Edit {
+        file: Option<PathBuf>,
+        /// Disposition du clavier : qwerty, azerty ou qwertz (détectée par défaut).
+        #[arg(long)]
+        clavier: Option<String>,
+    },
     /// Joue un son de test et mesure latence et décrochages audio.
     Tone {
         /// Durée de lecture en secondes.
@@ -128,7 +133,7 @@ impl MixArgs {
 
 fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
-        Command::Edit { file } => tui::run(file),
+        Command::Edit { file, clavier } => tui::run(file, clavier),
         Command::Tone { seconds } => tone::run(seconds),
         Command::Mcp => mcp::run(),
         Command::Dump { file, pattern } => dump(&file, pattern),

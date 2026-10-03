@@ -111,7 +111,13 @@ pub struct Replayer {
     running: bool,
     /// Rejoue la même position en boucle (lecture d'un pattern).
     loop_pattern: bool,
+    /// Voix réservées aux notes jouées au clavier pour les écouter, mixées au centre
+    /// par-dessus le morceau : la lecture ne les interrompt pas.
+    jam: Vec<Voice>,
 }
+
+/// Nombre de notes jouables en même temps au clavier.
+pub const JAM_VOICES: usize = 4;
 
 impl Replayer {
     pub fn new(song: Arc<Song>, rate: u32) -> Self {
@@ -136,6 +142,7 @@ impl Replayer {
             ended: false,
             running: true,
             loop_pattern: false,
+            jam: vec![Voice::default(); JAM_VOICES],
             song,
         };
         replayer.skip_invalid_positions();
@@ -211,21 +218,33 @@ impl Replayer {
         self.voices.iter_mut().for_each(|v| v.playing = false);
     }
 
-    /// Joue une note à la main sur une voie (saisie au clavier), lecture lancée ou non.
-    pub fn jam(&mut self, voice: usize, sample: usize, period: u16) {
+    /// Joue une note pour l'écouter, sur une voix d'écoute (0 à `JAM_VOICES - 1`), que la
+    /// lecture soit lancée ou non.
+    pub fn jam(&mut self, slot: usize, sample: usize, period: u16) {
         let song = self.song.clone();
         let Some(s) = song.samples.get(sample.wrapping_sub(1)) else {
             return;
         };
-        let v = &mut self.voices[voice];
-        v.sample = sample;
-        v.volume = s.volume.min(64) as i32;
+        let Some(v) = self.jam.get_mut(slot) else {
+            return;
+        };
+        *v = Voice {
+            sample,
+            volume: s.volume.min(64) as i32,
+            finetune: s.finetune(),
+            ..Voice::default()
+        };
         v.out_volume = v.volume;
-        v.finetune = s.finetune();
         v.period = finetuned(period, v.finetune);
         v.out_period = v.period;
-        v.cell = Cell::default();
         trigger(v, &song);
+    }
+
+    /// Arrête une voix d'écoute (touche relâchée).
+    pub fn jam_stop(&mut self, slot: usize) {
+        if let Some(v) = self.jam.get_mut(slot) {
+            v.playing = false;
+        }
     }
 
     /// État d'une voie : sample, période jouée et volume joué (pour l'affichage et le débogage).
@@ -256,6 +275,11 @@ impl Replayer {
                 };
                 left += x * l;
                 right += x * r;
+            }
+            for voice in &mut self.jam {
+                let x = render_voice(voice, &self.song, self.rate) * 0.5;
+                left += x;
+                right += x;
             }
             frame[0] = (left * master).clamp(-1.0, 1.0);
             frame[1] = (right * master).clamp(-1.0, 1.0);
@@ -865,6 +889,9 @@ mod tests {
         r.process(&mut out);
         assert!(out.iter().any(|&x| x != 0.0));
         assert_eq!(r.position(), (0, 0));
+        r.jam_stop(1);
+        r.process(&mut out);
+        assert!(out.iter().all(|&x| x == 0.0));
     }
 
     #[test]

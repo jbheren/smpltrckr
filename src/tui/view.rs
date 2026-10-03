@@ -108,6 +108,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
             sample.display_name()
         )
         .into(),
+        format!("{}  ", app.layout.name).fg(DIM),
         format!("vit {} · {} BPM  ", app.tempo.0, app.tempo.1).fg(Color::Yellow),
         format!("pos {:02}/{:02}", app.position, song.order_list().len() - 1).fg(DIM),
     ]);

@@ -1,9 +1,123 @@
 //! Raccourcis clavier : la table unique qui relie les touches aux actions.
 //!
-//! Le clavier « piano » suit la position physique des touches d'un clavier QWERTY, comme dans
-//! ProTracker et FT2. Une disposition AZERTY pourra s'ajouter ici sans toucher au reste.
+//! Le clavier « piano » suit la position physique des touches, comme dans ProTracker et FT2 :
+//! la même place sur un clavier QWERTY, AZERTY ou QWERTZ. Un terminal transmet des caractères,
+//! pas des positions : chaque disposition dit donc quel caractère produit chaque touche.
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+/// Disposition du clavier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Layout {
+    pub name: &'static str,
+    /// Rangée du bas puis rangée du milieu, aux places de « z s x d c v g b h n j m , l . ; / »
+    /// sur un QWERTY : do, do#, ré… de l'octave choisie.
+    piano_low: &'static str,
+    /// Rangée des lettres et des chiffres, aux places de « q 2 w 3 e r 5 t 6 y 7 u i 9 o 0 p » :
+    /// l'octave au-dessus.
+    piano_high: &'static str,
+    /// Caractères de la rangée des chiffres sans majuscule, de 1 à 9 puis 0.
+    digit_row: [char; 10],
+}
+
+pub const LAYOUTS: [Layout; 3] = [
+    Layout {
+        name: "QWERTY",
+        piano_low: "zsxdcvgbhnjm,l.;/",
+        piano_high: "q2w3er5t6y7ui9o0p",
+        digit_row: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+    },
+    Layout {
+        name: "AZERTY",
+        piano_low: "wsxdcvgbhnj,;l:m!",
+        piano_high: "aéz\"er(t-yèuiçoàp",
+        digit_row: ['&', 'é', '"', '\'', '(', '-', 'è', '_', 'ç', 'à'],
+    },
+    Layout {
+        name: "QWERTZ",
+        piano_low: "ysxdcvgbhnjm,l.ö-",
+        piano_high: "q2w3er5t6z7ui9o0p",
+        digit_row: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+    },
+];
+
+impl Layout {
+    pub fn by_name(name: &str) -> Option<Layout> {
+        let name = name.to_ascii_lowercase();
+        let wanted = match name.as_str() {
+            "fr" | "be" | "azerty" => "AZERTY",
+            "de" | "ch" | "at" | "qwertz" => "QWERTZ",
+            "us" | "gb" | "uk" | "qwerty" => "QWERTY",
+            _ => return None,
+        };
+        LAYOUTS.iter().copied().find(|l| l.name == wanted)
+    }
+
+    /// Disposition suivante (F3).
+    pub fn next(self) -> Layout {
+        let i = LAYOUTS.iter().position(|l| *l == self).unwrap_or(0);
+        LAYOUTS[(i + 1) % LAYOUTS.len()]
+    }
+
+    /// Demi-tons au-dessus du do de l'octave choisie.
+    pub fn piano(&self, c: char) -> Option<i32> {
+        let find = |row: &str| row.chars().position(|x| x == c).map(|i| i as i32);
+        find(self.piano_low).or_else(|| find(self.piano_high).map(|i| i + 12))
+    }
+
+    /// Chiffre tapé, avec ou sans majuscule (sur AZERTY, « é » vaut 2).
+    pub fn digit(&self, c: char) -> Option<u32> {
+        c.to_digit(10).or_else(|| {
+            self.digit_row
+                .iter()
+                .position(|&d| d == c)
+                .map(|i| (i as u32 + 1) % 10)
+        })
+    }
+
+    /// Chiffre hexadécimal tapé (0-9, A-F).
+    pub fn hex_digit(&self, c: char) -> Option<u32> {
+        self.digit(c).or_else(|| c.to_digit(16))
+    }
+}
+
+/// Disposition au démarrage : `SMPLTRCKR_CLAVIER`, sinon celle du clavier principal de
+/// Hyprland, sinon celle de localectl, sinon QWERTY.
+pub fn detect_layout() -> Layout {
+    let from_env = std::env::var("SMPLTRCKR_CLAVIER")
+        .ok()
+        .and_then(|n| Layout::by_name(&n));
+    from_env
+        .or_else(hyprland_layout)
+        .or_else(localectl_layout)
+        .unwrap_or(LAYOUTS[0])
+}
+
+fn hyprland_layout() -> Option<Layout> {
+    let out = std::process::Command::new("hyprctl")
+        .args(["-j", "devices"])
+        .output()
+        .ok()?;
+    let text = String::from_utf8(out.stdout).ok()?;
+    // Le clavier principal : « "layout": "fr" » dans le bloc qui contient « "main": true ».
+    let block = text.split('{').find(|b| b.contains("\"main\": true"))?;
+    let layout = block
+        .split("\"layout\": \"")
+        .nth(1)?
+        .split(['"', ','])
+        .next()?;
+    Layout::by_name(layout)
+}
+
+fn localectl_layout() -> Option<Layout> {
+    let out = std::process::Command::new("localectl")
+        .arg("status")
+        .output()
+        .ok()?;
+    let text = String::from_utf8(out.stdout).ok()?;
+    let line = text.lines().find(|l| l.contains("X11 Layout:"))?;
+    Layout::by_name(line.split(':').nth(1)?.trim().split(',').next()?)
+}
 
 /// Zone qui reçoit les touches de navigation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +152,7 @@ pub enum Action {
     SetTitle,
     SetTempo,
     Help,
+    NextLayout,
     // Déplacements (selon la zone active)
     Up,
     Down,
@@ -67,7 +182,7 @@ pub enum Action {
 }
 
 /// Action d'une touche, hors saisie (notes, chiffres) qui dépend de la colonne du curseur.
-pub fn action(key: KeyEvent, focus: Focus) -> Option<Action> {
+pub fn action(key: KeyEvent, focus: Focus, layout: Layout) -> Option<Action> {
     use Action::*;
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let alt = key.modifiers.contains(KeyModifiers::ALT);
@@ -82,7 +197,9 @@ pub fn action(key: KeyEvent, focus: Focus) -> Option<Action> {
         KeyCode::Char('t') if ctrl => SetTitle,
         KeyCode::Char('b') if ctrl => SetTempo,
         KeyCode::Char('k') if ctrl => DeleteRow,
-        KeyCode::Char(c @ '1'..='8') if alt => ToggleMute(c as usize - '1' as usize),
+        KeyCode::Char(c) if alt && matches!(layout.digit(c), Some(1..=8)) => {
+            ToggleMute(layout.digit(c).unwrap() as usize - 1)
+        }
         KeyCode::Char('s' | 'S') if alt => Solo,
         KeyCode::Char('0') if alt => ResetMix,
         KeyCode::Up if alt => VoiceVolume(1),
@@ -98,6 +215,7 @@ pub fn action(key: KeyEvent, focus: Focus) -> Option<Action> {
         KeyCode::Char(' ') => ToggleEdit,
         KeyCode::F(1) => OctaveDown,
         KeyCode::F(2) => OctaveUp,
+        KeyCode::F(3) => NextLayout,
         KeyCode::F(5) => SetFocus(Focus::Pattern),
         KeyCode::F(6) => SetFocus(Focus::Orders),
         KeyCode::F(7) => SetFocus(Focus::Samples),
@@ -149,21 +267,11 @@ pub fn action(key: KeyEvent, focus: Focus) -> Option<Action> {
     })
 }
 
-/// Clavier piano : demi-tons au-dessus du do de l'octave choisie (rangée du bas), ou de
-/// l'octave suivante (rangée du haut).
-pub fn piano(c: char) -> Option<i32> {
-    const LOW: &str = "zsxdcvgbhnjm,l.;/";
-    const HIGH: &str = "q2w3er5t6y7ui9o0p";
-    LOW.find(c)
-        .map(|i| i as i32)
-        .or_else(|| HIGH.find(c).map(|i| i as i32 + 12))
-}
-
 /// Rappel des touches de la zone active, affiché en bas de l'écran : (zone, « touche action · … »).
 pub const FOCUS_HINTS: [(&str, &str); 4] = [
     (
         "pattern, édition",
-        "Espace écoute · zxc… notes · 0-9 A-F sample/effet · Suppr effacer · Entrée lire · F6 ordre · F7 samples · ? aide",
+        "Espace écoute · clavier piano notes · 0-9 A-F sample/effet · Suppr effacer · Entrée lire · F6 ordre · F7 samples · ? aide",
     ),
     (
         "pattern",
@@ -188,8 +296,12 @@ pub const HELP: &[(&str, &str)] = &[
         "Espace",
         "mode édition (sinon, les notes ne font que sonner)",
     ),
-    ("z s x … / q 2 w …", "notes (clavier piano, deux octaves)"),
+    (
+        "rangées du bas et du haut",
+        "notes (clavier piano, deux octaves, selon la disposition)",
+    ),
     ("F1 / F2", "octave du clavier piano"),
+    ("F3", "disposition du clavier : QWERTY, AZERTY, QWERTZ"),
     ("[ ]", "sample courant (dans les samples : finetune)"),
     (
         "flèches, PgPréc/PgSuiv",
@@ -237,22 +349,50 @@ mod tests {
     use super::*;
 
     #[test]
-    fn piano_follows_protracker_layout() {
-        assert_eq!(piano('z'), Some(0));
-        assert_eq!(piano('m'), Some(11));
-        assert_eq!(piano('q'), Some(12));
-        assert_eq!(piano('2'), Some(13));
-        assert_eq!(piano('p'), Some(28));
-        assert_eq!(piano('a'), None);
+    fn piano_keys_sit_at_the_same_places_on_every_layout() {
+        let [qwerty, azerty, qwertz] = LAYOUTS;
+        // Touche en bas à gauche : do ; touche « A » du QWERTY (Q de l'AZERTY) : rien.
+        assert_eq!(qwerty.piano('z'), Some(0));
+        assert_eq!(azerty.piano('w'), Some(0));
+        assert_eq!(qwertz.piano('y'), Some(0));
+        assert_eq!(azerty.piano('q'), None);
+        // Rangée du haut : do de l'octave suivante, puis do# sur la rangée des chiffres.
+        assert_eq!(azerty.piano('a'), Some(12));
+        assert_eq!(azerty.piano('é'), Some(13));
+        assert_eq!(azerty.piano(','), Some(11));
+        assert_eq!(azerty.piano('p'), Some(28));
+        for layout in LAYOUTS {
+            assert_eq!(layout.piano_low.chars().count(), 17, "{}", layout.name);
+            assert_eq!(layout.piano_high.chars().count(), 17, "{}", layout.name);
+        }
+    }
+
+    #[test]
+    fn azerty_digit_row_counts_as_digits() {
+        let azerty = Layout::by_name("fr").unwrap();
+        assert_eq!(azerty.digit('&'), Some(1));
+        assert_eq!(azerty.digit('à'), Some(0));
+        assert_eq!(azerty.hex_digit('c'), Some(12));
+        let alt_e = KeyEvent::new(KeyCode::Char('é'), KeyModifiers::ALT);
+        assert_eq!(
+            action(alt_e, Focus::Pattern, azerty),
+            Some(Action::ToggleMute(1))
+        );
     }
 
     #[test]
     fn same_key_depends_on_focus() {
         let del = KeyEvent::from(KeyCode::Delete);
-        assert_eq!(action(del, Focus::Pattern), Some(Action::ClearField));
-        assert_eq!(action(del, Focus::Orders), Some(Action::Delete));
+        assert_eq!(
+            action(del, Focus::Pattern, LAYOUTS[0]),
+            Some(Action::ClearField)
+        );
+        assert_eq!(action(del, Focus::Orders, LAYOUTS[0]), Some(Action::Delete));
         let g = KeyEvent::from(KeyCode::Char('g'));
-        assert_eq!(action(g, Focus::Samples), Some(Action::GenerateSample));
-        assert_eq!(action(g, Focus::Pattern), None);
+        assert_eq!(
+            action(g, Focus::Samples, LAYOUTS[0]),
+            Some(Action::GenerateSample)
+        );
+        assert_eq!(action(g, Focus::Pattern, LAYOUTS[0]), None);
     }
 }

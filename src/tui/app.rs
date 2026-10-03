@@ -5,17 +5,21 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use super::dialog::{Answer, Browser, Choice, Dialog, Outcome, Prompt, Purpose};
-use super::keys::{self, Action, Focus};
+use super::keys::{self, Action, Focus, Layout};
 use crate::editor::{Change, Editor, Origin, journal_path, journal_text};
 use crate::format::protracker;
 use crate::monitor::Monitor;
-use crate::replayer::{Mixer, Replayer};
+use crate::replayer::{JAM_VOICES, Mixer, Replayer};
 use crate::song::{Cell, Pattern, Sample, Song};
 use crate::{note, samples};
+
+/// Durée d'une note écoutée quand le terminal ne signale pas le relâchement des touches.
+const JAM_TIMEOUT: Duration = Duration::from_millis(1500);
 
 /// Colonne du curseur dans une cellule `C-3 01 A04`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +110,13 @@ pub struct App {
     /// Sample utilisé pour les notes saisies (1 à 31).
     pub sample: usize,
     pub edit_mode: bool,
+    /// Disposition du clavier, pour le clavier piano et les chiffres.
+    pub layout: Layout,
+    /// Vrai si le terminal signale le relâchement des touches : les notes écoutées s'arrêtent
+    /// alors au relâchement, sinon au bout de `JAM_TIMEOUT`.
+    pub key_release: bool,
+    /// Notes en cours d'écoute, par voix d'écoute : touche et instant d'appui.
+    jam: [Option<(char, Instant)>; JAM_VOICES],
     pub dialog: Option<Dialog>,
     pub status: String,
     pub quit: bool,
@@ -131,6 +142,9 @@ impl App {
             octave: 2,
             sample: 1,
             edit_mode: false,
+            layout: keys::LAYOUTS[0],
+            key_release: false,
+            jam: [None; JAM_VOICES],
             dialog: None,
             status: "? : aide".into(),
             quit: false,
@@ -155,7 +169,15 @@ impl App {
 
     /// À chaque image : suit la lecture (le curseur se place sur la ligne jouée).
     pub fn tick(&mut self) {
-        let r = self.audio.replayer.lock().unwrap();
+        let mut r = self.audio.replayer.lock().unwrap();
+        if !self.key_release {
+            for (slot, jam) in self.jam.iter_mut().enumerate() {
+                if jam.is_some_and(|(_, since)| since.elapsed() > JAM_TIMEOUT) {
+                    r.jam_stop(slot);
+                    *jam = None;
+                }
+            }
+        }
         self.running = r.is_running();
         self.tempo = r.tempo();
         if self.running {
@@ -187,6 +209,18 @@ impl App {
     // --- Clavier ---------------------------------------------------------------------------
 
     pub fn handle_key(&mut self, key: KeyEvent) {
+        if key.kind == KeyEventKind::Release {
+            if let KeyCode::Char(c) = key.code {
+                self.release_jam(c.to_ascii_lowercase());
+            }
+            return;
+        }
+        // Une touche de note tenue se répète : on ne relance pas la note.
+        let note_key =
+            self.dialog.is_none() && self.focus == Focus::Pattern && self.field == Field::Note;
+        if key.kind == KeyEventKind::Repeat && note_key && matches!(key.code, KeyCode::Char(_)) {
+            return;
+        }
         if let Some(dialog) = &mut self.dialog {
             match dialog.handle(key) {
                 Outcome::Pending => {}
@@ -198,7 +232,7 @@ impl App {
             }
             return;
         }
-        if let Some(action) = keys::action(key, self.focus) {
+        if let Some(action) = keys::action(key, self.focus, self.layout) {
             let armed = self.armed.take();
             self.act(action, armed == Some(action));
             return;
@@ -326,6 +360,10 @@ impl App {
                 self.dialog = Some(Dialog::Prompt(prompt));
             }
             Help => self.dialog = Some(Dialog::Help),
+            NextLayout => {
+                self.layout = self.layout.next();
+                self.status = format!("clavier {}", self.layout.name);
+            }
             _ => match self.focus {
                 Focus::Pattern => self.act_pattern(action),
                 Focus::Orders => self.act_orders(action),
@@ -397,7 +435,7 @@ impl App {
     /// Saisie d'un caractère dans la colonne du curseur.
     fn type_char(&mut self, c: char) {
         if self.field == Field::Note {
-            let Some(semitone) = keys::piano(c) else {
+            let Some(semitone) = self.layout.piano(c) else {
                 return;
             };
             let index = (self.octave as i32 - 1) * 12 + semitone;
@@ -406,11 +444,7 @@ impl App {
                 return;
             }
             let period = note::PERIODS[index as usize];
-            self.audio
-                .replayer
-                .lock()
-                .unwrap()
-                .jam(self.voice, self.sample, period);
+            self.play_jam(c, self.sample, period);
             if self.edit_mode {
                 let sample = self.sample as u8;
                 self.edit_cell(&note::name(index as usize), |cell, _| {
@@ -420,7 +454,9 @@ impl App {
             }
             return;
         }
-        let Some(digit) = c.to_digit(16) else { return };
+        let Some(digit) = self.layout.hex_digit(c) else {
+            return;
+        };
         if !self.edit_mode {
             self.status = "mode écoute : Espace pour éditer".into();
             return;
@@ -448,6 +484,34 @@ impl App {
             Field::Note => {}
         });
         self.row = (self.row + 1) % 64;
+    }
+
+    /// Fait entendre une note sur une voix d'écoute libre (ou la plus ancienne).
+    fn play_jam(&mut self, key: char, sample: usize, period: u16) {
+        let slot = self
+            .jam
+            .iter()
+            .position(Option::is_none)
+            .unwrap_or_else(|| {
+                (0..JAM_VOICES)
+                    .min_by_key(|&i| self.jam[i].map(|(_, t)| t))
+                    .unwrap()
+            });
+        self.audio
+            .replayer
+            .lock()
+            .unwrap()
+            .jam(slot, sample, period);
+        self.jam[slot] = Some((key, Instant::now()));
+    }
+
+    fn release_jam(&mut self, key: char) {
+        for (slot, jam) in self.jam.iter_mut().enumerate() {
+            if jam.is_some_and(|(k, _)| k == key) {
+                self.audio.replayer.lock().unwrap().jam_stop(slot);
+                *jam = None;
+            }
+        }
     }
 
     pub fn current_cell(&self) -> Cell {
@@ -639,11 +703,7 @@ impl App {
             }
             Preview => {
                 let index = (self.octave as usize).min(2) * 12;
-                self.audio
-                    .replayer
-                    .lock()
-                    .unwrap()
-                    .jam(self.voice, n, note::PERIODS[index]);
+                self.play_jam('\0', n, note::PERIODS[index]);
             }
             Delete => self.set_sample(format!("sample {n:02} vidé"), Sample::default()),
             Enter => self.focus = Focus::Pattern,
@@ -910,6 +970,31 @@ mod tests {
         assert_eq!(a.editor.start_tempo(), (140, 4));
         assert_eq!(cell_text(&a, 0, 0), "... .. F8C");
         assert_eq!(cell_text(&a, 0, 1), "... .. F04");
+    }
+
+    #[test]
+    fn listened_notes_use_jam_voices_and_stop_on_release() {
+        let mut a = app();
+        a.key_release = true;
+        typing(&mut a, "zc");
+        assert_eq!(a.jam.iter().flatten().count(), 2);
+        assert_eq!(cell_text(&a, 0, 0), "... .. ...");
+        a.handle_key(KeyEvent::new_with_kind(
+            KeyCode::Char('z'),
+            KeyModifiers::NONE,
+            KeyEventKind::Release,
+        ));
+        assert_eq!(
+            a.jam.iter().flatten().map(|(k, _)| *k).collect::<Vec<_>>(),
+            ['c']
+        );
+        // Une touche tenue qui se répète ne relance rien.
+        a.handle_key(KeyEvent::new_with_kind(
+            KeyCode::Char('c'),
+            KeyModifiers::NONE,
+            KeyEventKind::Repeat,
+        ));
+        assert_eq!(a.jam.iter().flatten().count(), 1);
     }
 
     #[test]
