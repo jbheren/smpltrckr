@@ -11,10 +11,11 @@ use super::app::{App, Field};
 use super::dialog::Dialog;
 use super::keys::{FOCUS_HINTS, Focus, HELP};
 use crate::format::text::cell_to_text;
+use crate::monitor::{Monitor, SCOPE_LEN};
 
 const DIM: Color = Color::DarkGray;
-/// Largeur d'une colonne de voie : « C-3 01 A04 » et ses marges.
-const VOICE_WIDTH: u16 = 13;
+/// Largeur minimale d'une colonne de voie : « │ C-3 01 A04 » et une marge.
+const MIN_VOICE_WIDTH: u16 = 13;
 
 pub fn draw(f: &mut Frame, app: &App) {
     let [header, body, hints, status] = Layout::vertical([
@@ -29,7 +30,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     let [orders, samples, master] = Layout::vertical([
         Constraint::Length(10),
         Constraint::Min(5),
-        Constraint::Length(3),
+        Constraint::Length(SCOPE_HEIGHT + 3),
     ])
     .areas(side);
 
@@ -130,25 +131,27 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let [voices_header, grid, meters] = Layout::vertical([
+    let [voices_header, grid, scopes, states] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(3),
-        Constraint::Length(2),
+        Constraint::Length(SCOPE_HEIGHT),
+        Constraint::Length(1),
     ])
     .areas(inner);
     let channels = app.channels();
     let mixer = &app.editor.mixer;
     let audible = |v: usize| mixer.audible(v);
+    // Les colonnes des voies se partagent la largeur disponible.
+    let width = ((inner.width.saturating_sub(3)) / channels as u16).max(MIN_VOICE_WIDTH) as usize;
+    let pad = |used: usize| " ".repeat(width.saturating_sub(used));
 
     // En-tête des voies.
     let mut head = vec![Span::raw("   ")];
     for v in 0..channels {
-        let style = if !audible(v) {
-            Style::new().fg(DIM)
-        } else {
-            Style::new().fg(Color::Cyan)
-        };
-        head.push(Span::styled(format!("│ voie {:<6}", v + 1), style));
+        let style = Style::new().fg(if audible(v) { Color::Cyan } else { DIM });
+        let label = format!("│ voie {}", v + 1);
+        let used = label.chars().count();
+        head.push(Span::styled(label + &pad(used), style));
     }
     f.render_widget(Line::from(head), voices_header);
 
@@ -163,11 +166,11 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
                 return Line::default();
             }
             let row = row as usize;
-            let number_style = if row.is_multiple_of(4) {
-                Style::new().fg(Color::Gray)
+            let number_style = Style::new().fg(if row.is_multiple_of(4) {
+                Color::Gray
             } else {
-                Style::new().fg(DIM)
-            };
+                DIM
+            });
             let mut spans = vec![Span::styled(format!("{row:02} "), number_style)];
             for v in 0..channels {
                 spans.push("│ ".fg(DIM));
@@ -175,7 +178,7 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
                 let cursor_field = (offset == 0 && v == app.voice && app.focus == Focus::Pattern)
                     .then_some(app.field);
                 spans.extend(cell_spans(&text, cursor_field, audible(v)));
-                spans.push(" ".into());
+                spans.push(pad(12).into());
             }
             let line = Line::from(spans);
             match (offset, app.running) {
@@ -187,33 +190,126 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
         .collect();
     f.render_widget(Paragraph::new(lines), grid);
 
-    // VU-mètre et état sous chaque voie.
-    let mut bars = vec![Span::raw("   ")];
-    let mut states = vec![Span::raw("   ")];
+    // Oscilloscope et état sous chaque voie.
+    let mut state_line = vec![Span::raw("   ")];
     for v in 0..channels {
-        let level = app.audio.monitor.level(Some(v));
-        bars.push("│ ".fg(DIM));
-        bars.extend(meter(level, (VOICE_WIDTH - 3) as usize, audible(v)));
-        bars.push(" ".into());
+        let x = scopes.x + 3 + (v * width) as u16;
+        if x >= scopes.right() {
+            break;
+        }
+        let separator = Rect {
+            x,
+            width: 1,
+            ..scopes
+        };
+        f.render_widget(
+            Paragraph::new(vec![Line::from("│").fg(DIM); SCOPE_HEIGHT as usize]),
+            separator,
+        );
+        let scope_area = Rect {
+            x: x + 1,
+            width: (width as u16 - 2).min(scopes.right() - x - 1),
+            ..scopes
+        };
+        let color = if audible(v) { Color::Green } else { DIM };
+        let wave = triggered_scope(&app.audio.monitor, Some(v));
+        f.render_widget(
+            Paragraph::new(scope(
+                &wave,
+                scope_area.width as usize,
+                SCOPE_HEIGHT as usize,
+                VOICE_SCOPE_GAIN,
+                color,
+            )),
+            scope_area,
+        );
+
         let state = match (mixer.mute[v], mixer.solo[v]) {
             (_, true) => " SOLO ".fg(Color::Black).bg(Color::Yellow),
             (true, _) => " coupée ".fg(Color::White).bg(Color::Red),
             _ => "".into(),
         };
-        states.push("│ ".fg(DIM));
         let volume = format!("{:>3} % ", (mixer.volume[v] * 100.0).round() as u32);
-        let used = volume.chars().count() + state.content.chars().count();
-        states.push(volume.fg(if audible(v) { Color::Gray } else { DIM }));
-        states.push(state);
-        states.push(
-            " ".repeat((VOICE_WIDTH as usize - 2).saturating_sub(used))
-                .into(),
-        );
+        let used = 2 + volume.chars().count() + state.content.chars().count();
+        state_line.push("│ ".fg(DIM));
+        state_line.push(volume.fg(if audible(v) { Color::Gray } else { DIM }));
+        state_line.push(state);
+        state_line.push(pad(used).into());
     }
-    f.render_widget(
-        Paragraph::new(vec![Line::from(bars), Line::from(states)]),
-        meters,
-    );
+    f.render_widget(Line::from(state_line), states);
+}
+
+/// Hauteur des oscilloscopes, en lignes de texte (4 points Braille par ligne).
+const SCOPE_HEIGHT: u16 = 4;
+/// Agrandissement des formes d'onde : une voie dépasse rarement la moitié de l'échelle, et le
+/// master est atténué par le mixage (2 / nombre de voies).
+const VOICE_SCOPE_GAIN: f32 = 2.0;
+const MASTER_SCOPE_GAIN: f32 = 3.0;
+
+/// Échantillons récents d'une voie (`None` = master), calés sur un passage par zéro montant
+/// pour que la forme d'onde reste immobile d'une image à l'autre.
+fn triggered_scope(monitor: &Monitor, voice: Option<usize>) -> Vec<f32> {
+    let mut all = vec![0.0f32; SCOPE_LEN];
+    monitor.scope(voice, &mut all);
+    let shown = SCOPE_LEN / 2;
+    let start = (1..SCOPE_LEN - shown)
+        .find(|&i| all[i - 1] <= 0.0 && all[i] > 0.0)
+        .unwrap_or(SCOPE_LEN - shown);
+    all[start..start + shown].to_vec()
+}
+
+/// Forme d'onde en caractères Braille (2 × 4 points par caractère). Chaque colonne de points
+/// couvre plusieurs échantillons : on trace le segment de leur minimum à leur maximum.
+fn scope(
+    samples: &[f32],
+    width: usize,
+    height: usize,
+    gain: f32,
+    color: Color,
+) -> Vec<Line<'static>> {
+    const BITS: [[u8; 4]; 2] = [[0x01, 0x02, 0x04, 0x40], [0x08, 0x10, 0x20, 0x80]];
+    let (dots_w, dots_h) = (width * 2, height * 4);
+    if dots_w == 0 || samples.is_empty() {
+        return Vec::new();
+    }
+    let mut cells = vec![0u8; width * height];
+    let to_y = |s: f32| {
+        ((1.0 - ((s * gain).clamp(-1.0, 1.0) + 1.0) / 2.0) * (dots_h - 1) as f32).round() as usize
+    };
+    let mut previous: Option<usize> = None;
+    for x in 0..dots_w {
+        let start = x * samples.len() / dots_w;
+        let end = ((x + 1) * samples.len() / dots_w).max(start + 1);
+        let bucket = &samples[start..end];
+        let (lo, hi) = bucket
+            .iter()
+            .fold((f32::MAX, f32::MIN), |(lo, hi), &s| (lo.min(s), hi.max(s)));
+        let (mut top, mut bottom) = (to_y(hi), to_y(lo));
+        // Relie au dernier point de la colonne précédente : la courbe reste continue.
+        if let Some(y) = previous {
+            (top, bottom) = (top.min(y), bottom.max(y));
+        }
+        for y in top..=bottom {
+            cells[(y / 4) * width + x / 2] |= BITS[x % 2][y % 4];
+        }
+        previous = Some(to_y(bucket[bucket.len() - 1]));
+    }
+    cells
+        .chunks(width)
+        .map(|row| {
+            let text: String = row
+                .iter()
+                .map(|&b| {
+                    if b == 0 {
+                        ' '
+                    } else {
+                        char::from_u32(0x2800 + b as u32).unwrap()
+                    }
+                })
+                .collect();
+            Line::from(text).fg(color)
+        })
+        .collect()
 }
 
 /// Les cinq morceaux d'une cellule, avec le champ du curseur en inverse.
@@ -320,8 +416,23 @@ fn draw_master(f: &mut Frame, app: &App, area: Rect) {
     let block = panel(" master ".into(), false);
     let inner = block.inner(area);
     f.render_widget(block, area);
+    let [wave, bar] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+    let samples = triggered_scope(&app.audio.monitor, None);
+    f.render_widget(
+        Paragraph::new(scope(
+            &samples,
+            wave.width as usize,
+            wave.height as usize,
+            MASTER_SCOPE_GAIN,
+            Color::Cyan,
+        )),
+        wave,
+    );
     let level = app.audio.monitor.level(None);
-    f.render_widget(Line::from(meter(level, inner.width as usize, true)), inner);
+    f.render_widget(
+        Line::from(meter(level * 2.0, bar.width as usize, true)),
+        bar,
+    );
 }
 
 /// Premier élément affiché pour garder `selected` visible dans une liste de `len` éléments.
@@ -474,6 +585,30 @@ mod tests {
     }
 
     #[test]
+    fn scope_draws_a_continuous_wave() {
+        // Un cycle de sinus sur 8 caractères × 2 lignes : chaque colonne de points est allumée.
+        let wave: Vec<f32> = (0..256)
+            .map(|i| (i as f32 / 256.0 * std::f32::consts::TAU).sin())
+            .collect();
+        let lines = scope(&wave, 8, 2, 1.0, Color::Green);
+        assert_eq!(lines.len(), 2);
+        let mut columns = [false; 16];
+        for (r, line) in lines.iter().enumerate() {
+            let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+            for (c, ch) in text.chars().enumerate() {
+                let bits = (ch as u32).saturating_sub(0x2800);
+                columns[c * 2] |= bits & 0x47 != 0;
+                columns[c * 2 + 1] |= bits & 0xB8 != 0;
+            }
+            assert!(r < 2);
+        }
+        assert!(columns.iter().all(|&c| c), "{columns:?}");
+        // Le haut de l'onde (début du cycle, sinus positif) est sur la première ligne.
+        let first: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(first.chars().take(4).any(|c| c != ' '));
+    }
+
+    #[test]
     fn shows_help_dialog() {
         let song = Song::new("");
         let mut app = App::new(song.clone(), None, Audio::silent(&song));
@@ -490,8 +625,14 @@ mod tests {
             .unwrap_or("sessions/2026-10-03-chiptune-la-mineur/morceau.mod".into());
         let song = crate::format::protracker::read(&std::fs::read(&path).unwrap()).unwrap();
         let mut app = App::new(song.clone(), Some(path.into()), Audio::silent(&song));
-        app.row = 12;
-        app.handle_key(KeyEvent::from(KeyCode::Char(' ')));
+        {
+            // Deux secondes de lecture pour remplir les oscilloscopes.
+            let mut r = app.audio.replayer.lock().unwrap();
+            r.play(0, false);
+            let mut buf = vec![0.0f32; 2 * 48000 * 2 + 2 * 3000];
+            r.process(&mut buf);
+        }
+        app.tick();
         println!("{}", render(&app));
     }
 }

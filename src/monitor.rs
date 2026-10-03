@@ -7,8 +7,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering::Relaxed};
 
-/// Nombre d'échantillons gardés par voie (environ 21 ms à 48 kHz).
-pub const SCOPE_LEN: usize = 1024;
+/// Nombre d'échantillons gardés par voie (environ 43 ms à 48 kHz).
+pub const SCOPE_LEN: usize = 2048;
 
 pub struct Monitor {
     voices: usize,
