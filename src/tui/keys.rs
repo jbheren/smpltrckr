@@ -157,6 +157,26 @@ pub fn piano(c: char) -> Option<i32> {
         .or_else(|| HIGH.find(c).map(|i| i as i32 + 12))
 }
 
+/// Rappel des touches de la zone active, affiché en bas de l'écran : (zone, « touche action · … »).
+pub const FOCUS_HINTS: [(&str, &str); 4] = [
+    (
+        "pattern, édition",
+        "Espace écoute · zxc… notes · 0-9 A-F sample/effet · Suppr effacer · Entrée lire · F6 ordre · F7 samples · ? aide",
+    ),
+    (
+        "pattern",
+        "Espace éditer · Entrée lire · Ctrl+P boucle · Alt+1…8 couper · F6 ordre · F7 samples · Ctrl+S enregistrer · ? aide",
+    ),
+    (
+        "ordre",
+        "↑↓ position · ←→ pattern (crée le suivant) · Inser ajouter · Suppr retirer · Entrée éditer · F5 pattern",
+    ),
+    (
+        "samples",
+        "↑↓ choisir · g générer · l charger WAV/AIFF · n renommer · ←→ volume · [ ] finetune · p écouter · Suppr vider · F5 pattern",
+    ),
+];
+
 /// Aide affichée par « ? » : (touches, action).
 pub const HELP: &[(&str, &str)] = &[
     ("Entrée", "lire / arrêter le morceau depuis la position"),

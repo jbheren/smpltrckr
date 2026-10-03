@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, Clear, Paragraph};
 
 use super::app::{App, Field};
 use super::dialog::Dialog;
-use super::keys::{Focus, HELP};
+use super::keys::{FOCUS_HINTS, Focus, HELP};
 use crate::format::text::cell_to_text;
 
 const DIM: Color = Color::DarkGray;
@@ -17,9 +17,10 @@ const DIM: Color = Color::DarkGray;
 const VOICE_WIDTH: u16 = 13;
 
 pub fn draw(f: &mut Frame, app: &App) {
-    let [header, body, status] = Layout::vertical([
+    let [header, body, hints, status] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(10),
+        Constraint::Length(1),
         Constraint::Length(1),
     ])
     .areas(f.area());
@@ -37,11 +38,32 @@ pub fn draw(f: &mut Frame, app: &App) {
     draw_orders(f, app, orders);
     draw_samples(f, app, samples);
     draw_master(f, app, master);
+    f.render_widget(hint_line(app), hints);
     f.render_widget(Line::from(app.status.as_str()).fg(Color::Gray), status);
 
     if let Some(dialog) = &app.dialog {
         draw_dialog(f, dialog);
     }
+}
+
+/// Touches utiles dans la zone active, toujours visibles en bas de l'écran.
+fn hint_line(app: &App) -> Line<'static> {
+    let hints = match app.focus {
+        Focus::Pattern if app.edit_mode => FOCUS_HINTS[0].1,
+        Focus::Pattern => FOCUS_HINTS[1].1,
+        Focus::Orders => FOCUS_HINTS[2].1,
+        Focus::Samples => FOCUS_HINTS[3].1,
+    };
+    let mut spans = Vec::new();
+    for (i, part) in hints.split(" · ").enumerate() {
+        if i > 0 {
+            spans.push("  ".into());
+        }
+        let (key, what) = part.split_once(' ').unwrap_or((part, ""));
+        spans.push(key.to_string().fg(Color::Cyan));
+        spans.push(format!(" {what}").fg(DIM));
+    }
+    Line::from(spans)
 }
 
 fn panel(title: String, focused: bool) -> Block<'static> {
@@ -434,6 +456,7 @@ mod tests {
         app.editor.mixer.mute[2] = true;
         let s = render(&app);
         for expected in [
+            "F7 samples",
             "smpltrckr",
             "écran",
             "ÉDITION",
