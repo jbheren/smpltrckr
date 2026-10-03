@@ -42,6 +42,15 @@ pub fn parse_cell(text: &str) -> anyhow::Result<Cell> {
     let period = match note {
         "..." => 0,
         "???" => bail!("« ??? » ne peut pas être écrit : utiliser une note de C-1 à B-3"),
+        // Un effet écrit à la place de la note (ex. « F00 .. ... ») : on montre la bonne forme.
+        n if note::parse(n).is_none()
+            && n.len() == 3
+            && n.chars().all(|c| c.is_ascii_hexdigit()) =>
+        {
+            bail!(
+                "{n:?} est un effet écrit à la place de la note : une cellule s'écrit note sample effet, ex. « ... .. {n} »"
+            )
+        }
         n if note::parse(n).is_none() && n.ends_with(['0', '4']) => {
             bail!("note {n:?} hors de la plage ProTracker : utiliser une note de C-1 à B-3")
         }
@@ -214,6 +223,8 @@ mod tests {
         assert_eq!(cell_to_text(&cell(1712)), "C-0 01 ...");
         assert_eq!(cell_to_text(&cell(1000)), "??? 01 ...");
         assert!(parse_cell("C-0 01 ...").is_err());
+        let misplaced = parse_cell("F00 .. ...").unwrap_err().to_string();
+        assert!(misplaced.contains("« ... .. F00 »"), "{misplaced}");
     }
 
     #[test]

@@ -228,6 +228,12 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 - Outils de mixage pour l'agent : `voice_mute`, `voice_solo`, `voice_volume`, et `render_wav` avec une option « une piste par voie ».
 - **Jalon (= premier MVP) :** à partir d'une consigne courte (« un morceau chiptune de 30 secondes en la mineur »), un agent crée un `.mod` de A à Z et rend le WAV. Le fichier se lit dans pt2-clone ou OpenMPT. Les traces de la session sont conservées.
 
+**Résultats (03/10/2026).** Jalon atteint techniquement. L'écoute reste à faire par JB.
+- `src/editor.rs` : toute modification passe par l'éditeur, s'annule et se rétablit (500 niveaux), et laisse une trace dans le journal (heure, origine agent ou clavier). Le journal est enregistré à côté du `.mod` (`.journal.txt`).
+- `src/samples.rs` : générateur de formes d'onde en boucle (sine, square, pulse, saw, triangle, noise) et de percussions (kick, snare, hihat). Import de WAV (8, 16, 24 ou 32 bits, flottant, boucle `smpl`) et d'AIFF ou AIFF-C, en mono 8 bits, sans rééchantillonnage, avec l'option « réduire de moitié ». La note qui rend la hauteur d'origine est indiquée.
+- `src/mcp.rs` : 22 outils (morceau, ordre, patterns, samples, mixage, rendu WAV, annulation, journal), plus un aide-mémoire (`reference` : guide, effets, notes, gammes, accords).
+- **Session de composition** (`sessions/2026-10-03-chiptune-la-mineur/`). Claude a reçu une seule consigne : « un morceau chiptune d'environ 30 secondes en la mineur ». Il a composé « La Mineur Chip » en 2 min 20 s (25 tours, 0,64 $) : 4 patterns, Am–F–C–G puis une cadence par mi majeur, arpèges 037/047, mélodie pulse avec vibrato, fin en fondu et F00. openmpt123 lit le fichier (30,72 s) et l'aller-retour est exact. Une seule erreur de notation (un effet écrit dans la colonne de la note), que l'agent a corrigée seul ; le message d'erreur propose maintenant directement la bonne écriture.
+
 ### Phase 4 — MVP de la TUI
 - Éditeur de patterns (curseur, saisie de notes au clavier piano, numéro de sample, effets), liste d'ordre, liste de samples, lecture/arrêt, sauvegarde.
 - Raccourcis simples inspirés de ProTracker, réunis dans une seule table. La disposition du clavier est reportée.
