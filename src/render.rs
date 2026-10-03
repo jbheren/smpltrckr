@@ -28,3 +28,17 @@ pub fn voices(
     }
     outs
 }
+
+/// Durée du morceau en secondes (jusqu'à la fin ou à `max_seconds`), calculée rapidement
+/// avec un rendu à basse fréquence.
+pub fn duration(song: std::sync::Arc<crate::song::Song>, max_seconds: f64) -> f64 {
+    const RATE: u32 = 1000;
+    let mut replayer = Replayer::new(song, RATE);
+    let mut buf = [0.0f32; 2 * 100];
+    let mut frames = 0usize;
+    while !replayer.ended() && (frames as f64) < max_seconds * RATE as f64 {
+        replayer.process(&mut buf);
+        frames += 100;
+    }
+    frames as f64 / RATE as f64
+}

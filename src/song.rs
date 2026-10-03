@@ -73,7 +73,25 @@ impl Sample {
     pub fn finetune(&self) -> i8 {
         ((self.finetune & 0x0F) as i8) << 4 >> 4
     }
+
+    pub fn set_name(&mut self, name: &str) {
+        self.name = bytes_from_text(name);
+    }
+
+    /// Remplace les données et met la longueur de l'en-tête en cohérence
+    /// (un nombre pair d'octets, au plus 65 535 mots).
+    pub fn set_data(&mut self, mut data: Vec<i8>) {
+        data.truncate(MAX_SAMPLE_BYTES);
+        if data.len() % 2 == 1 {
+            data.push(0);
+        }
+        self.length_words = (data.len() / 2) as u16;
+        self.data = data;
+    }
 }
+
+/// Taille maximale d'un sample dans un `.mod` : 65 535 mots de 16 bits.
+pub const MAX_SAMPLE_BYTES: usize = 65_535 * 2;
 
 /// Variante du format `.mod`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,6 +121,25 @@ pub struct Song {
 }
 
 impl Song {
+    /// Morceau vide au format ProTracker `M.K.` : 4 voies, 31 samples vides, un pattern.
+    pub fn new(title: &str) -> Self {
+        Self {
+            title: bytes_from_text(title),
+            kind: ModKind::Tagged(*b"M.K."),
+            channels: 4,
+            samples: vec![Sample::default(); 31],
+            song_length: 1,
+            restart: 127,
+            orders: [0; 128],
+            patterns: vec![Pattern::new(64, 4)],
+            trailing: Vec::new(),
+        }
+    }
+
+    pub fn set_title(&mut self, title: &str) {
+        self.title = bytes_from_text(title);
+    }
+
     pub fn display_title(&self) -> String {
         text_from_bytes(&self.title)
     }
@@ -113,6 +150,16 @@ impl Song {
     }
 }
 
+/// Champ de nom à partir d'un texte : caractères Latin-1 (les autres deviennent `?`),
+/// tronqué à la taille du champ et complété par des zéros.
+fn bytes_from_text<const N: usize>(text: &str) -> [u8; N] {
+    let mut out = [0u8; N];
+    for (slot, c) in out.iter_mut().zip(text.chars()) {
+        *slot = u8::try_from(c as u32).unwrap_or(b'?');
+    }
+    out
+}
+
 /// Texte lisible depuis un champ de nom : coupé au premier zéro, octets lus en Latin-1.
 fn text_from_bytes(bytes: &[u8]) -> String {
     bytes
@@ -120,4 +167,28 @@ fn text_from_bytes(bytes: &[u8]) -> String {
         .take_while(|&&b| b != 0)
         .map(|&b| b as char)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_song_is_a_valid_empty_mod() {
+        let song = Song::new("Démo");
+        assert_eq!(song.display_title(), "Démo");
+        assert_eq!(song.order_list(), &[0]);
+        let bytes = crate::format::protracker::write(&song);
+        assert_eq!(bytes.len(), 1084 + 1024);
+        assert_eq!(crate::format::protracker::read(&bytes).unwrap(), song);
+    }
+
+    #[test]
+    fn names_are_truncated_and_padded() {
+        let mut sample = Sample::default();
+        sample.set_name("une basse très très très longue");
+        assert_eq!(sample.display_name(), "une basse très très tr");
+        sample.set_data(vec![1, 2, 3]);
+        assert_eq!((sample.length_words, sample.data.len()), (2, 4));
+    }
 }
