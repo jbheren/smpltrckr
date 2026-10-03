@@ -38,6 +38,7 @@ pub fn run(file: Option<PathBuf>, layout: Option<String>) -> anyhow::Result<()> 
         })?,
         None => keys::detect_layout(),
     };
+    app.key_repeat = keys::detect_key_repeat();
     app.status = format!("clavier {} (F3 pour changer) · ? : aide", app.layout.name);
     if let Some(warning) = warning {
         app.status = warning;
