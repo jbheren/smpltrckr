@@ -13,6 +13,7 @@ use ratatui::crossterm::event::{self, Event};
 use rust_i18n::t;
 
 use crate::format::protracker;
+use crate::session::Job;
 use crate::song::Song;
 use app::{App, Audio};
 
@@ -41,9 +42,25 @@ pub fn run(file: Option<PathBuf>, layout: Option<String>) -> anyhow::Result<()> 
         app.status = warning;
     }
 
+    // Live session: agents connecting through `smpltrckr mcp` send jobs to this loop.
+    let (jobs, inbox) = std::sync::mpsc::channel::<Job>();
+    let live = match crate::mcp::serve_live(jobs) {
+        Ok(server) => {
+            app.agents = Some(server.agents.clone());
+            Some(server)
+        }
+        Err(e) => {
+            app.status = t!("status.no_live", error = format!("{e:#}")).into_owned();
+            None
+        }
+    };
+
     let mut terminal = ratatui::init();
     let result = (|| -> anyhow::Result<()> {
         while !app.quit {
+            while let Ok(job) = inbox.try_recv() {
+                app.run_job(job);
+            }
             app.tick();
             terminal.draw(|f| view::draw(f, &app))?;
             if event::poll(Duration::from_millis(16))?
@@ -55,5 +72,6 @@ pub fn run(file: Option<PathBuf>, layout: Option<String>) -> anyhow::Result<()> 
         Ok(())
     })();
     ratatui::restore();
+    drop(live);
     result
 }

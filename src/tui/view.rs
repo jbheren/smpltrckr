@@ -9,10 +9,11 @@ use ratatui::widgets::{Block, Clear, Paragraph};
 use rust_i18n::t;
 use unicode_width::UnicodeWidthStr;
 
-use super::app::{App, Field};
+use super::app::{AGENT_MARK, App, Field};
 use super::dialog::Dialog;
 use super::effects;
 use super::keys::{FOCUS_HINTS, Focus, HELP};
+use crate::editor::Origin;
 use crate::format::text::cell_to_text;
 use crate::monitor::{Monitor, SCOPE_LEN};
 
@@ -62,7 +63,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     f.render_widget(Line::from(app.status.as_str()).fg(Color::Gray), status);
 
     if let Some(dialog) = &app.dialog {
-        draw_dialog(f, dialog);
+        draw_dialog(f, app, dialog);
     }
 }
 
@@ -148,6 +149,7 @@ fn panel(title: String, focused: bool) -> Block<'static> {
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let song = app.song();
     let file = app
+        .session
         .path
         .as_ref()
         .and_then(|p| p.file_name())
@@ -162,6 +164,21 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     } else {
         format!(" {} ", t!("view.listen")).fg(DIM)
     };
+    let agents = app
+        .agents
+        .as_ref()
+        .map_or(0, |a| a.load(std::sync::atomic::Ordering::Relaxed));
+    let fresh = app
+        .agent_active
+        .is_some_and(|t| t.elapsed().as_secs_f32() < 2.0);
+    let agent = match (agents, fresh) {
+        (0, _) => "".into(),
+        (_, true) => format!(" {} ", t!("view.agent"))
+            .bold()
+            .fg(Color::Black)
+            .bg(Color::Green),
+        (_, false) => format!(" {} ", t!("view.agent")).fg(Color::Green),
+    };
     let play = if app.running {
         " ▶ ".fg(Color::Black).bg(Color::Green)
     } else {
@@ -171,9 +188,10 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let line = Line::from(vec![
         " smpltrckr ".bold().fg(Color::Black).bg(Color::Cyan),
         format!(" {} ", song.display_title()).bold(),
-        format!("{file}{} ", if app.dirty { " *" } else { "" }).fg(DIM),
+        format!("{file}{} ", if app.session.dirty { " *" } else { "" }).fg(DIM),
         play,
         mode,
+        agent,
         format!(
             "  {}  ",
             t!(
@@ -225,7 +243,7 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
     ])
     .areas(inner);
     let channels = app.channels();
-    let mixer = &app.editor.mixer;
+    let mixer = &app.session.editor.mixer;
     let audible = |v: usize| mixer.audible(v);
     // Voice columns share the available width.
     let width = ((inner.width.saturating_sub(3)) / channels as u16).max(MIN_VOICE_WIDTH) as usize;
@@ -261,7 +279,19 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
                 let text = cell_to_text(&pattern.rows[row][v]);
                 let cursor_field = (offset == 0 && v == app.voice && app.focus == Focus::Pattern)
                     .then_some(app.field);
-                spans.extend(cell_spans(&text, cursor_field, audible(v)));
+                let marked = app
+                    .agent_marks
+                    .get(&(p, row, v))
+                    .is_some_and(|t| t.elapsed() < AGENT_MARK);
+                let mut cell = cell_spans(&text, cursor_field, audible(v));
+                if marked {
+                    // Written by the agent lately: a green tint, like fresh paint on the hull.
+                    cell = cell
+                        .into_iter()
+                        .map(|span| span.bg(Color::Rgb(20, 60, 30)))
+                        .collect();
+                }
+                spans.extend(cell);
                 spans.push(" ".repeat(width.saturating_sub(12)).into());
             }
             let line = Line::from(spans);
@@ -562,7 +592,7 @@ fn help_lines(page: usize) -> Vec<Line<'static>> {
         .collect()
 }
 
-fn draw_dialog(f: &mut Frame, dialog: &Dialog) {
+fn draw_dialog(f: &mut Frame, app: &App, dialog: &Dialog) {
     let area = f.area();
     let (title, lines, width): (String, Vec<Line>, u16) =
         match dialog {
@@ -573,6 +603,30 @@ fn draw_dialog(f: &mut Frame, dialog: &Dialog) {
                     t!("dialog.help_effects")
                 };
                 (format!(" {title} "), help_lines(*page), 100)
+            }
+            Dialog::Journal => {
+                let journal = app.session.editor.journal();
+                let shown = (area.height.saturating_sub(6)) as usize;
+                let lines = journal[journal.len().saturating_sub(shown)..]
+                    .iter()
+                    .map(|e| {
+                        let secs = e
+                            .time
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map_or(0, |d| d.as_secs());
+                        let time = crate::editor::format_time(secs);
+                        let (who, color) = match e.origin {
+                            Origin::Agent => (t!("journal.agent"), Color::Green),
+                            Origin::Keyboard => (t!("journal.keyboard"), Color::Gray),
+                        };
+                        Line::from(vec![
+                            format!("{} ", &time[11..19]).fg(DIM),
+                            pad_to(&who, 12).fg(color),
+                            e.text.clone().fg(color),
+                        ])
+                    })
+                    .collect();
+                (format!(" {} ", t!("dialog.journal")), lines, 100)
             }
             Dialog::Prompt(p) => {
                 let lines = vec![Line::from(vec![p.text.clone().into(), "█".fg(Color::Cyan)])];
@@ -676,7 +730,7 @@ mod tests {
         let mut app = App::new(song.clone(), None, Audio::silent(&song));
         app.handle_key(KeyEvent::from(KeyCode::Char(' ')));
         app.handle_key(KeyEvent::from(KeyCode::Char('z')));
-        app.editor.mixer.mute[2] = true;
+        app.session.editor.mixer.mute[2] = true;
         let s = render(&app);
         for expected in [
             "Space listen",

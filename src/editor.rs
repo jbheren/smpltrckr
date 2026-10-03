@@ -313,7 +313,7 @@ pub fn journal_text(editor: &Editor) -> String {
 }
 
 /// UTC time `YYYY-MM-DD hh:mm:ss UTC`, without a date crate.
-fn format_time(secs: u64) -> String {
+pub fn format_time(secs: u64) -> String {
     let (days, rest) = (secs / 86400, secs % 86400);
     // Days since 1970 → civil date (Howard Hinnant's algorithm).
     let z = days as i64 + 719_468;

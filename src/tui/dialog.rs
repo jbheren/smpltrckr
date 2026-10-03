@@ -22,6 +22,8 @@ pub enum Dialog {
     Choice(Choice),
     /// Help page: 0 = keys, 1 = effects.
     Help(usize),
+    /// Change journal: who did what (agent or keyboard).
+    Journal,
 }
 
 /// Answer of a finished dialog.
@@ -52,6 +54,7 @@ impl Dialog {
                 }
                 _ => Outcome::Cancel,
             },
+            Dialog::Journal => Outcome::Cancel,
             Dialog::Browser(b) => b.handle(key),
             Dialog::Prompt(p) => p.handle(key),
             Dialog::Choice(c) => c.handle(key),

@@ -3,6 +3,7 @@
 //! Everything goes through the editor (`Origin::Keyboard`); after each change the replayer
 //! gets the new song, so editing works while playing.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -12,12 +13,16 @@ use rust_i18n::t;
 
 use super::dialog::{Answer, Browser, Choice, Dialog, Outcome, Prompt, Purpose};
 use super::keys::{self, Action, Focus, Layout};
-use crate::editor::{Change, Editor, Origin, journal_path, journal_text};
+use crate::editor::{Change, Origin, journal_path, journal_text};
 use crate::format::protracker;
 use crate::monitor::Monitor;
 use crate::replayer::{Mixer, Replayer};
+use crate::session::{Cursor, Job, Session};
 use crate::song::{Cell, Pattern, Sample, Song};
 use crate::{note, samples};
+
+/// How long cells written by the agent stay highlighted.
+pub const AGENT_MARK: Duration = Duration::from_secs(20);
 
 /// A new press of the same key sooner than this is an auto-repeat (key held down): it does
 /// not retrigger the note.
@@ -97,9 +102,8 @@ impl Audio {
 }
 
 pub struct App {
-    pub editor: Editor,
-    pub path: Option<PathBuf>,
-    pub dirty: bool,
+    /// The song, its file and unsaved-changes flag, shared with the agent through jobs.
+    pub session: Session,
     pub audio: Audio,
     pub focus: Focus,
     /// Position being edited in the order list.
@@ -123,15 +127,19 @@ pub struct App {
     armed: Option<Action>,
     /// Playing or not, speed and tempo (copied from the replayer on every frame).
     pub running: bool,
+    /// Cells the agent changed lately, keyed by (pattern, row, voice), with when.
+    pub agent_marks: HashMap<(usize, usize, usize), Instant>,
+    /// Last time the agent changed something.
+    pub agent_active: Option<Instant>,
+    /// Number of agents connected to this editor (live sessions), if it listens for them.
+    pub agents: Option<Arc<std::sync::atomic::AtomicUsize>>,
     pub tempo: (u32, u32),
 }
 
 impl App {
     pub fn new(song: Song, path: Option<PathBuf>, audio: Audio) -> Self {
         Self {
-            editor: Editor::new(song),
-            path,
-            dirty: false,
+            session: Session::new(song, path),
             audio,
             focus: Focus::Pattern,
             position: 0,
@@ -148,12 +156,15 @@ impl App {
             quit: false,
             armed: None,
             running: false,
+            agent_marks: HashMap::new(),
+            agent_active: None,
+            agents: None,
             tempo: (6, 125),
         }
     }
 
     pub fn song(&self) -> &Song {
-        self.editor.song()
+        self.session.editor.song()
     }
 
     pub fn channels(&self) -> usize {
@@ -167,25 +178,88 @@ impl App {
 
     /// On every frame: follow playback (the cursor sits on the row being played).
     pub fn tick(&mut self) {
-        let r = self.audio.replayer.lock().unwrap();
-        self.running = r.is_running();
-        self.tempo = r.tempo();
-        if self.running {
-            (self.position, self.row) = r.position();
+        {
+            let r = self.audio.replayer.lock().unwrap();
+            self.running = r.is_running();
+            self.tempo = r.tempo();
+            if self.running {
+                (self.position, self.row) = r.position();
+            }
         }
+        // Tell the agent where the user is.
+        self.session.cursor = Some(Cursor {
+            position: self.position,
+            pattern: self.pattern_index(),
+            row: self.row,
+            voice: self.voice + 1,
+            playing: self.running,
+        });
+        self.agent_marks
+            .retain(|_, when| when.elapsed() < AGENT_MARK);
+    }
+
+    /// Runs a job sent by the agent, then brings the screen and the sound up to date.
+    pub fn run_job(&mut self, job: Job) {
+        let before = self.song().clone();
+        let journal = self.session.editor.journal().len();
+        // The agent side speaks English, whatever the interface language.
+        let language = rust_i18n::locale().to_string();
+        crate::lang::set("en");
+        job(&mut self.session);
+        crate::lang::set(&language);
+
+        let after = self.song().clone();
+        if after.channels != before.channels {
+            self.audio.reset(&after);
+        }
+        // Mark the cells the agent changed.
+        let now = Instant::now();
+        for (p, pattern) in after.patterns.iter().enumerate() {
+            for (row, cells) in pattern.rows.iter().enumerate() {
+                for (v, cell) in cells.iter().enumerate() {
+                    let old = before
+                        .patterns
+                        .get(p)
+                        .and_then(|o| o.rows.get(row))
+                        .and_then(|r| r.get(v));
+                    if old != Some(cell) {
+                        self.agent_marks.insert((p, row, v), now);
+                    }
+                }
+            }
+        }
+        // Say what the agent just did.
+        let entries =
+            &self.session.editor.journal()[journal.min(self.session.editor.journal().len())..];
+        if let Some(last) = entries.iter().rev().find(|e| e.origin == Origin::Agent) {
+            self.status = t!("status.agent", what = last.text).into_owned();
+            self.agent_active = Some(now);
+        }
+        self.clamp_cursor();
+        self.sync();
+    }
+
+    /// Keeps the cursor inside the song after a change made elsewhere.
+    fn clamp_cursor(&mut self) {
+        let (orders, channels) = (self.song().order_list().len(), self.channels());
+        self.position = self.position.min(orders - 1);
+        self.voice = self.voice.min(channels - 1);
+        self.row = self.row.min(63);
     }
 
     /// Hands the song and the mix over to the replayer.
     fn sync(&mut self) {
-        let song = Arc::new(self.editor.song().clone());
+        let song = Arc::new(self.session.editor.song().clone());
         let mut r = self.audio.replayer.lock().unwrap();
         r.set_song(song);
-        r.mixer = self.editor.mixer.clone();
+        r.mixer = self.session.editor.mixer.clone();
     }
 
     fn apply(&mut self, description: String, changes: Vec<Change>) {
-        self.editor.apply(Origin::Keyboard, description, changes);
-        self.dirty = true;
+        self.session
+            .editor
+            .apply(Origin::Keyboard, description, changes);
+        self.session.dirty = true;
         self.sync();
     }
 
@@ -237,18 +311,19 @@ impl App {
         use Action::*;
         match action {
             Quit => {
-                if self.dirty && !confirmed {
+                if self.session.dirty && !confirmed {
                     self.arm(Quit, t!("status.quit_unsaved").into_owned());
                 } else {
                     self.quit = true;
                 }
             }
-            Save => match self.path.clone() {
+            Save => match self.session.path.clone() {
                 Some(path) => self.save(&path),
                 None => self.act(SaveAs, false),
             },
             SaveAs => {
                 let default = self
+                    .session
                     .path
                     .as_ref()
                     .map_or(t!("file.default_name").into_owned(), |p| {
@@ -261,7 +336,7 @@ impl App {
                 )));
             }
             Open => {
-                if self.dirty && !confirmed {
+                if self.session.dirty && !confirmed {
                     self.arm(Open, t!("status.open_unsaved").into_owned());
                 } else {
                     let dir = self.browse_dir();
@@ -270,11 +345,11 @@ impl App {
                     self.dialog = Some(Dialog::Browser(browser));
                 }
             }
-            Undo => match self.editor.undo(Origin::Keyboard) {
+            Undo => match self.session.editor.undo(Origin::Keyboard) {
                 Some(d) => self.after_history(t!("status.undone", what = d).into_owned()),
                 None => self.status = t!("status.nothing_to_undo").into_owned(),
             },
-            Redo => match self.editor.redo(Origin::Keyboard) {
+            Redo => match self.session.editor.redo(Origin::Keyboard) {
                 Some(d) => self.after_history(t!("status.redone", what = d).into_owned()),
                 None => self.status = t!("status.nothing_to_redo").into_owned(),
             },
@@ -312,21 +387,21 @@ impl App {
             NextSample => self.sample = (self.sample + 1).min(31),
             SetFocus(focus) => self.focus = focus,
             ToggleMute(v) if v < self.channels() => {
-                self.editor.mixer.mute[v] = !self.editor.mixer.mute[v];
+                self.session.editor.mixer.mute[v] = !self.session.editor.mixer.mute[v];
                 self.sync();
             }
             ToggleMute(_) => {}
             Solo => {
                 let v = self.voice;
-                self.editor.mixer.solo[v] = !self.editor.mixer.solo[v];
+                self.session.editor.mixer.solo[v] = !self.session.editor.mixer.solo[v];
                 self.sync();
             }
             ResetMix => {
-                self.editor.mixer = Mixer::new(self.channels());
+                self.session.editor.mixer = Mixer::new(self.channels());
                 self.sync();
             }
             VoiceVolume(step) => {
-                let volume = &mut self.editor.mixer.volume[self.voice];
+                let volume = &mut self.session.editor.mixer.volume[self.voice];
                 *volume = (*volume + step as f32 * 0.1).clamp(0.0, 1.0);
                 self.sync();
             }
@@ -339,7 +414,7 @@ impl App {
                 )));
             }
             SetTempo => {
-                let (bpm, speed) = self.editor.start_tempo();
+                let (bpm, speed) = self.session.editor.start_tempo();
                 let prompt = Prompt::new(
                     Purpose::SetTempo,
                     t!("dialog.tempo"),
@@ -348,6 +423,7 @@ impl App {
                 self.dialog = Some(Dialog::Prompt(prompt));
             }
             Help => self.dialog = Some(Dialog::Help(0)),
+            Journal => self.dialog = Some(Dialog::Journal),
             NextLayout => {
                 self.layout = self.layout.next();
                 self.status = t!("status.layout", layout = self.layout.name).into_owned();
@@ -367,13 +443,14 @@ impl App {
 
     fn after_history(&mut self, message: String) {
         self.status = message;
-        self.dirty = true;
+        self.session.dirty = true;
         self.position = self.position.min(self.song().order_list().len() - 1);
         self.sync();
     }
 
     fn browse_dir(&self) -> PathBuf {
-        self.path
+        self.session
+            .path
             .as_deref()
             .and_then(Path::parent)
             .filter(|p| !p.as_os_str().is_empty())
@@ -510,7 +587,7 @@ impl App {
             what = what
         )
         .into_owned();
-        let changes = self.editor.set_pattern(p, pattern).map(|c| vec![c]);
+        let changes = self.session.editor.set_pattern(p, pattern).map(|c| vec![c]);
         self.apply_result(description, changes);
     }
 
@@ -534,7 +611,7 @@ impl App {
         } else {
             t!("edit.row_deleted")
         };
-        let changes = self.editor.set_pattern(p, pattern).map(|c| vec![c]);
+        let changes = self.session.editor.set_pattern(p, pattern).map(|c| vec![c]);
         let description = t!(
             "edit.cell",
             pattern = format!("{p:02}"),
@@ -570,6 +647,7 @@ impl App {
                 if wanted == self.song().patterns.len() {
                     // One step past the last pattern: create an empty one. « Cap sur la suite ! »
                     match self
+                        .session
                         .editor
                         .set_pattern(wanted, Pattern::new(64, self.channels()))
                     {
@@ -596,7 +674,7 @@ impl App {
                 }
                 let mut new_orders = orders.clone();
                 new_orders.insert(self.position + 1, orders[self.position]);
-                let result = self.editor.set_orders(&new_orders).map(|c| vec![c]);
+                let result = self.session.editor.set_orders(&new_orders).map(|c| vec![c]);
                 let description = t!(
                     "edit.position_inserted",
                     position = format!("{:02}", self.position + 1)
@@ -610,7 +688,7 @@ impl App {
                 }
                 let mut new_orders = orders.clone();
                 new_orders.remove(self.position);
-                let result = self.editor.set_orders(&new_orders).map(|c| vec![c]);
+                let result = self.session.editor.set_orders(&new_orders).map(|c| vec![c]);
                 let description = t!(
                     "edit.position_removed",
                     position = format!("{:02}", self.position)
@@ -724,7 +802,11 @@ impl App {
     }
 
     fn set_sample(&mut self, description: String, sample: Sample) {
-        let changes = self.editor.set_sample(self.sample, sample).map(|c| vec![c]);
+        let changes = self
+            .session
+            .editor
+            .set_sample(self.sample, sample)
+            .map(|c| vec![c]);
         self.apply_result(description, changes);
     }
 
@@ -743,6 +825,7 @@ impl App {
                     (Some(Ok(bpm)), speed) if !matches!(speed, Some(Err(_))) => {
                         let speed = speed.and_then(Result::ok);
                         let changes = self
+                            .session
                             .editor
                             .set_start_tempo(Some(bpm), speed)
                             .map(|c| vec![c]);
@@ -836,13 +919,13 @@ impl App {
             }
         };
         self.audio.reset(&song);
-        self.editor.replace_song(
+        self.session.editor.replace_song(
             Origin::Keyboard,
             song,
             t!("journal.opened", path = path.display()).into_owned(),
         );
-        self.path = Some(path.to_path_buf());
-        self.dirty = false;
+        self.session.path = Some(path.to_path_buf());
+        self.session.dirty = false;
         (self.position, self.row, self.voice, self.field) = (0, 0, 0, Field::Note);
         self.sync();
         self.status = t!("status.opened", path = path.display()).into_owned();
@@ -850,16 +933,16 @@ impl App {
 
     fn save(&mut self, path: &Path) {
         let result = std::fs::write(path, protracker::write(self.song())).and_then(|_| {
-            self.editor.log(
+            self.session.editor.log(
                 Origin::Keyboard,
                 t!("journal.saved", path = path.display()).into_owned(),
             );
-            std::fs::write(journal_path(path), journal_text(&self.editor))
+            std::fs::write(journal_path(path), journal_text(&self.session.editor))
         });
         match result {
             Ok(()) => {
-                self.path = Some(path.to_path_buf());
-                self.dirty = false;
+                self.session.path = Some(path.to_path_buf());
+                self.session.dirty = false;
                 self.status = t!("status.saved", path = path.display()).into_owned();
             }
             Err(e) => {
@@ -909,7 +992,7 @@ mod tests {
         assert_eq!(cell_text(&a, 0, 0), "C-2 05 ...");
         assert_eq!(cell_text(&a, 1, 0), "C-3 05 ...");
         assert_eq!(a.row, 2);
-        assert!(a.dirty);
+        assert!(a.session.dirty);
     }
 
     #[test]
@@ -1005,7 +1088,7 @@ mod tests {
         a.handle_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
         typing(&mut a, "140 4");
         press(&mut a, KeyCode::Enter);
-        assert_eq!(a.editor.start_tempo(), (140, 4));
+        assert_eq!(a.session.editor.start_tempo(), (140, 4));
         assert_eq!(cell_text(&a, 0, 0), "... .. F8C");
         assert_eq!(cell_text(&a, 0, 1), "... .. F04");
     }
@@ -1048,7 +1131,7 @@ mod tests {
     fn listened_note_sounds_on_the_cursor_voice_until_escape() {
         let mut a = app();
         let square = crate::samples::generate("square", 32).unwrap();
-        let change = a.editor.set_sample(1, square).unwrap();
+        let change = a.session.editor.set_sample(1, square).unwrap();
         a.apply("s1".into(), vec![change]);
         a.voice = 2;
         typing(&mut a, "z");
@@ -1072,13 +1155,49 @@ mod tests {
     }
 
     #[test]
+    fn agent_jobs_change_the_song_and_mark_cells() {
+        let mut a = app();
+        a.run_job(Box::new(|s: &mut Session| {
+            let mut p = s.editor.song().patterns[0].clone();
+            p.rows[4][2] = crate::format::text::parse_cell("A-2 01 037").unwrap();
+            let change = s.editor.set_pattern(0, p).unwrap();
+            s.editor.apply(Origin::Agent, "bass line", vec![change]);
+            s.dirty = true;
+        }));
+        assert_eq!(cell_text(&a, 4, 2), "A-2 01 037");
+        assert!(a.agent_marks.contains_key(&(0, 4, 2)));
+        assert_eq!(a.agent_marks.len(), 1);
+        assert!(a.status.contains("bass line"), "{}", a.status);
+        assert!(a.session.dirty);
+        // The replayer got the new song.
+        let r = a.audio.replayer.lock().unwrap();
+        drop(r);
+        // The user can undo what the agent did.
+        a.handle_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::CONTROL));
+        assert_eq!(cell_text(&a, 4, 2), "... .. ...");
+    }
+
+    #[test]
+    fn agent_sees_the_user_cursor() {
+        let mut a = app();
+        a.row = 7;
+        a.voice = 1;
+        a.tick();
+        let c = a.session.cursor.unwrap();
+        assert_eq!(
+            (c.position, c.pattern, c.row, c.voice, c.playing),
+            (0, 0, 7, 2, false)
+        );
+    }
+
+    #[test]
     fn save_and_open_roundtrip() {
         let path = std::env::temp_dir().join(format!("smpltrckr-app-{}.mod", std::process::id()));
         let mut a = app();
         press(&mut a, KeyCode::Char(' '));
         typing(&mut a, "z");
         a.save(&path);
-        assert!(!a.dirty);
+        assert!(!a.session.dirty);
         let mut b = app();
         b.open(&path);
         assert_eq!(cell_text(&b, 0, 0), "C-2 01 ...");

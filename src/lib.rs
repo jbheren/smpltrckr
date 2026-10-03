@@ -14,6 +14,7 @@ pub mod reference;
 pub mod render;
 pub mod replayer;
 pub mod samples;
+pub mod session;
 pub mod song;
 pub mod tone;
 pub mod tui;

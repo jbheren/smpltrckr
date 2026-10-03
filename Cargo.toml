@@ -12,5 +12,5 @@ rmcp = { version = "3.5.0", features = ["server", "transport-io"] }
 rust-i18n = "4.2.4"
 schemars = "1.2.2"
 serde = { version = "1.0.229", features = ["derive"] }
-tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "io-std"] }
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "io-std", "io-util", "net", "sync"] }
 unicode-width = "0.2.2"

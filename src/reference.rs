@@ -52,6 +52,15 @@ Notes from C-1 to B-3 (ProTracker's 3 octaves). The actual pitch depends on the 
 ## Mixing
 `mix_set` mutes, solos or sets the volume of a voice for the session and WAV renders; it is
 not saved in the .mod. For a lasting volume: the sample volume, or effect Cxx.
+
+## Live sessions
+When `ping` says live, the user has the song open in their editor and edits it with you.
+- `song_info` tells where they are (position, pattern, row, voice, playing or not).
+- Your changes show up on their screen at once, highlighted in green for a while; they
+  hear them on the next play, even while the song is playing.
+- Work alongside them: prefer voices or patterns they are not on, and say what you did.
+- `undo` undoes the last change of anyone, theirs included: use it for your own changes only.
+- `song_new` and `song_load` are refused while they have unsaved changes.
 ";
 
 const EFFECTS: &str = "\

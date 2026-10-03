@@ -1,6 +1,18 @@
 _version: 2
 
 # --- Status line -----------------------------------------------------------------------------
+status.agent:
+  en: "agent: %{what}"
+  fr: "agent : %{what}"
+  ja: "エージェント: %{what}"
+status.live:
+  en: "agents can join this session (smpltrckr mcp)"
+  fr: "un agent peut rejoindre cette session (smpltrckr mcp)"
+  ja: "エージェントがこのセッションに参加できます（smpltrckr mcp）"
+status.no_live:
+  en: "no live agent session: %{error}"
+  fr: "pas de session agent en direct : %{error}"
+  ja: "エージェントとのライブセッションなし: %{error}"
 status.help_hint:
   en: "? : help"
   fr: "? : aide"
@@ -235,6 +247,10 @@ dialog.browser_keys:
   en: "Enter, ← parent folder, Esc"
   fr: "Entrée, ← dossier parent, Échap"
   ja: "Enter、← 親フォルダ、Esc"
+dialog.journal:
+  en: "journal: who did what — any key to close"
+  fr: "journal : qui a fait quoi — une touche pour fermer"
+  ja: "履歴: 誰が何をしたか — 任意のキーで閉じる"
 dialog.help_keys:
   en: "help: keys — Tab: effects · Esc: close"
   fr: "aide : touches — Tab : effets · Échap : fermer"
@@ -277,6 +293,10 @@ view.voice:
   en: "voice %{voice}"
   fr: "voie %{voice}"
   ja: "ch %{voice}"
+view.agent:
+  en: agent
+  fr: agent
+  ja: エージェント
 view.solo:
   en: SOLO
   fr: SOLO
@@ -497,6 +517,14 @@ help.tempo.what:
   en: tempo (BPM) and speed at the start of the song
   fr: tempo (BPM) et vitesse au début du morceau
   ja: 曲の最初のテンポ（BPM）とスピード
+help.journal.keys:
+  en: F8
+  fr: F8
+  ja: F8
+help.journal.what:
+  en: "journal: who did what (you or the agent)"
+  fr: "journal : qui a fait quoi (toi ou l'agent)"
+  ja: "履歴: 誰が何をしたか（あなたかエージェントか）"
 help.quit.keys:
   en: Ctrl+Q
   fr: Ctrl+Q
