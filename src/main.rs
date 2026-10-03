@@ -1,75 +1,79 @@
-//! Interface en ligne de commande de smpltrckr.
+//! smpltrckr command line. « À l'abordage ! »
 
 use std::path::{Path, PathBuf};
-
-use anyhow::Context;
-use clap::{Parser, Subcommand};
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Context;
+use clap::{Parser, Subcommand};
+use rust_i18n::t;
 use smpltrckr::replayer::{Mixer, Replayer};
-use smpltrckr::{audio, format, mcp, monitor, render, song, tone, tui, wav};
+use smpltrckr::{audio, format, lang, mcp, monitor, render, song, tone, tui, wav};
+
+rust_i18n::i18n!("locales", fallback = "en");
 
 #[derive(Parser)]
 #[command(
     version,
-    about = "Tracker texte façon ProTracker, pilotable par un agent (MCP)"
+    about = "A ProTracker-style text-mode tracker, playable by an agent (MCP)"
 )]
 struct Cli {
+    /// Interface language: en, fr or ja (default: SMPLTRCKR_LANG, then the system locale).
+    #[arg(long, global = true)]
+    lang: Option<String>,
     #[command(subcommand)]
     command: Command,
 }
 
 #[derive(Subcommand)]
 enum Command {
-    /// Ouvre l'éditeur en mode texte (« ? » pour l'aide). Le fichier est créé à
-    /// l'enregistrement s'il n'existe pas.
+    /// Opens the text-mode editor ("?" for help). The file is created on first save.
     #[command(alias = "ui")]
     Edit {
         file: Option<PathBuf>,
-        /// Disposition du clavier : qwerty, azerty ou qwertz (détectée par défaut).
-        #[arg(long)]
-        clavier: Option<String>,
+        /// Keyboard layout: qwerty, azerty or qwertz (detected by default).
+        #[arg(long, alias = "clavier")]
+        keyboard: Option<String>,
     },
-    /// Joue un son de test et mesure latence et décrochages audio.
+    /// Plays a test sound and measures audio latency and dropouts.
     Tone {
-        /// Durée de lecture en secondes.
+        /// Playback duration in seconds.
         #[arg(short, long, default_value_t = 5)]
         seconds: u64,
     },
-    /// Lance le serveur MCP sur stdio (à brancher dans Claude Code).
+    /// Runs the MCP server on stdio (to plug into Claude Code). Speaks English.
     Mcp,
-    /// Affiche un module en texte : en-tête, ordre, samples et patterns.
+    /// Prints a module as text: header, order list, samples and patterns.
     Dump {
         file: PathBuf,
-        /// Patterns à afficher (tous par défaut).
+        /// Patterns to print (all by default).
         #[arg(short, long)]
         pattern: Vec<usize>,
     },
-    /// Charge puis réenregistre des modules en mémoire et vérifie qu'ils sont identiques à l'octet près.
+    /// Loads then saves modules in memory and checks they are identical down to the byte.
     Roundtrip {
         #[arg(required = true)]
         files: Vec<PathBuf>,
     },
-    /// Joue un module sur la sortie audio, jusqu'à sa fin.
+    /// Plays a module on the audio output, until its end.
     Play {
         file: PathBuf,
         #[command(flatten)]
         mix: MixArgs,
     },
-    /// Rend un module en WAV 16 bits (stéréo, ou une piste mono par voie avec --stems).
+    /// Renders a module to a 16-bit WAV (stereo, or one mono track per voice with --stems).
     Render {
         file: PathBuf,
-        /// Fichier de sortie (avec --stems : préfixe, complété par « -voie1.wav »…).
+        /// Output file (with --stems: a prefix, completed by "-voice1.wav"…).
         #[arg(short, long)]
         output: PathBuf,
-        /// Fréquence d'échantillonnage.
+        /// Sample rate.
         #[arg(long, default_value_t = 48000)]
         rate: u32,
-        /// Une piste mono par voie, sans mixage.
+        /// One mono track per voice, unmixed.
         #[arg(long)]
         stems: bool,
-        /// Durée maximale, pour les morceaux qui ne finissent jamais.
+        /// Maximum duration, for songs that never end.
         #[arg(long, default_value_t = 1200.0)]
         max_seconds: f64,
         #[command(flatten)]
@@ -77,19 +81,19 @@ enum Command {
     },
 }
 
-/// Réglages de mixage par voie (voies numérotées à partir de 1).
+/// Per-voice mix settings (voices numbered from 1).
 #[derive(clap::Args)]
 struct MixArgs {
-    /// Voies coupées, ex. --mute 2,4.
+    /// Muted voices, e.g. --mute 2,4.
     #[arg(long, value_delimiter = ',')]
     mute: Vec<usize>,
-    /// Voies en solo, ex. --solo 1.
+    /// Solo voices, e.g. --solo 1.
     #[arg(long, value_delimiter = ',')]
     solo: Vec<usize>,
-    /// Volume d'une voie, de 0 à 1, ex. --volume 3=0.5.
+    /// Volume of a voice, 0 to 1, e.g. --volume 3=0.5.
     #[arg(long, value_parser = parse_volume)]
     volume: Vec<(usize, f32)>,
-    /// Séparation stéréo, de 0 (mono) à 1 (Amiga).
+    /// Stereo separation, from 0 (mono) to 1 (Amiga).
     #[arg(long, default_value_t = 0.5)]
     separation: f32,
 }
@@ -97,13 +101,13 @@ struct MixArgs {
 fn parse_volume(text: &str) -> Result<(usize, f32), String> {
     let (voice, volume) = text
         .split_once('=')
-        .ok_or("attendu voie=volume, ex. 3=0.5")?;
+        .ok_or_else(|| t!("cli.volume_syntax").into_owned())?;
     let voice = voice
         .parse()
-        .map_err(|_| format!("voie invalide {voice:?}"))?;
+        .map_err(|_| t!("cli.bad_voice", voice = voice).into_owned())?;
     let volume: f32 = volume
         .parse()
-        .map_err(|_| format!("volume invalide {volume:?}"))?;
+        .map_err(|_| t!("cli.bad_volume", volume = volume).into_owned())?;
     Ok((voice, volume.clamp(0.0, 1.0)))
 }
 
@@ -113,7 +117,7 @@ impl MixArgs {
         let check = |v: usize| {
             anyhow::ensure!(
                 (1..=channels).contains(&v),
-                "voie {v} inexistante (1 à {channels})"
+                t!("cli.no_voice", voice = v, count = channels)
             );
             Ok(v - 1)
         };
@@ -132,8 +136,15 @@ impl MixArgs {
 }
 
 fn main() -> anyhow::Result<()> {
-    match Cli::parse().command {
-        Command::Edit { file, clavier } => tui::run(file, clavier),
+    let cli = Cli::parse();
+    let language = match &cli.lang {
+        Some(l) => lang::supported(l)
+            .ok_or_else(|| anyhow::anyhow!("unknown language {l:?}: en, fr or ja"))?,
+        None => lang::detect(),
+    };
+    lang::set(language);
+    match cli.command {
+        Command::Edit { file, keyboard } => tui::run(file, keyboard),
         Command::Tone { seconds } => tone::run(seconds),
         Command::Mcp => mcp::run(),
         Command::Dump { file, pattern } => dump(&file, pattern),
@@ -151,7 +162,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn load(file: &Path) -> anyhow::Result<(Vec<u8>, song::Song)> {
-    let data = std::fs::read(file).with_context(|| format!("lecture de {}", file.display()))?;
+    let data = std::fs::read(file).with_context(|| t!("cli.read_failed", path = file.display()))?;
     let song = format::protracker::read(&data).with_context(|| format!("{}", file.display()))?;
     Ok((data, song))
 }
@@ -164,10 +175,11 @@ fn dump(file: &Path, patterns: Vec<usize>) -> anyhow::Result<()> {
         patterns
     };
     if let Some(p) = patterns.iter().find(|&&p| p >= song.patterns.len()) {
-        anyhow::bail!(
-            "pattern {p} inexistant (le module en a {})",
-            song.patterns.len()
-        );
+        anyhow::bail!(t!(
+            "editor.no_such_pattern",
+            pattern = p,
+            count = song.patterns.len()
+        ));
     }
     print!("{}", format::text::song_to_text(&song, patterns));
     Ok(())
@@ -180,20 +192,41 @@ fn roundtrip(files: &[PathBuf]) -> anyhow::Result<()> {
             let written = format::protracker::write(&song);
             match original.iter().zip(&written).position(|(a, b)| a != b) {
                 None if original.len() == written.len() => Ok(()),
-                None => anyhow::bail!("taille {} au lieu de {}", written.len(), original.len()),
-                Some(offset) => anyhow::bail!("premier écart à l'octet {offset}"),
+                None => anyhow::bail!(t!(
+                    "cli.size_differs",
+                    written = written.len(),
+                    original = original.len()
+                )),
+                Some(offset) => anyhow::bail!(t!("cli.first_difference", offset = offset)),
             }
         });
         match result {
-            Ok(()) => println!("ok      {}", file.display()),
+            Ok(()) => println!("{}", t!("cli.roundtrip_ok", path = file.display())),
             Err(e) => {
                 failures += 1;
-                println!("ÉCHEC   {} : {e:#}", file.display());
+                println!(
+                    "{}",
+                    t!(
+                        "cli.roundtrip_failed",
+                        path = file.display(),
+                        error = format!("{e:#}")
+                    )
+                );
             }
         }
     }
-    println!("\n{} fichier(s), {} échec(s)", files.len(), failures);
-    anyhow::ensure!(failures == 0, "{failures} fichier(s) en échec");
+    println!(
+        "\n{}",
+        t!(
+            "cli.roundtrip_summary",
+            files = files.len(),
+            failures = failures
+        )
+    );
+    anyhow::ensure!(
+        failures == 0,
+        t!("cli.roundtrip_failures", failures = failures)
+    );
     Ok(())
 }
 
@@ -213,8 +246,8 @@ fn play(file: &Path, mix: &MixArgs) -> anyhow::Result<()> {
     })?;
 
     println!(
-        "lecture de « {title} » ({} voies) — Ctrl-C pour arrêter",
-        song.channels
+        "{}",
+        t!("cli.playing", title = title, voices = song.channels)
     );
     while !replayer.lock().unwrap().ended() {
         let (position, row) = monitor.position();
@@ -225,7 +258,12 @@ fn play(file: &Path, mix: &MixArgs) -> anyhow::Result<()> {
             })
             .collect::<Vec<_>>()
             .join("│");
-        print!("\rposition {position:03} ligne {row:02}  │{meters}│");
+        let where_ = t!(
+            "cli.position",
+            position = format!("{position:03}"),
+            row = format!("{row:02}")
+        );
+        print!("\r{where_}  │{meters}│");
         std::io::Write::flush(&mut std::io::stdout())?;
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -250,7 +288,7 @@ fn render_file(
         let tracks = render::voices(&mut replayer, channels, rate, max_seconds);
         let stem = output.with_extension("");
         for (v, track) in tracks.iter().enumerate() {
-            let path = PathBuf::from(format!("{}-voie{}.wav", stem.display(), v + 1));
+            let path = PathBuf::from(format!("{}-voice{}.wav", stem.display(), v + 1));
             wav::write(&path, track, 1, rate)?;
             println!("{}", path.display());
         }
@@ -262,15 +300,11 @@ fn render_file(
         out.len() / 2
     };
     let seconds = frames as f64 / rate as f64;
-    let note = if replayer.ended() {
-        ""
+    let duration = format!("{}:{:05.2}", (seconds / 60.0) as u32, seconds % 60.0);
+    if replayer.ended() {
+        println!("{}", t!("cli.duration", duration = duration));
     } else {
-        " (durée maximale atteinte)"
-    };
-    println!(
-        "durée : {}:{:05.2}{note}",
-        (seconds / 60.0) as u32,
-        seconds % 60.0
-    );
+        println!("{}", t!("cli.duration_capped", duration = duration));
+    }
     Ok(())
 }

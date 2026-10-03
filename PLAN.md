@@ -22,6 +22,7 @@ Ce document est une **proposition à discuter**. Les choix marqués « recommand
 - **XM serait un vrai plus.** Ce n'est pas dans le MVP, mais le modèle de données ne doit pas le rendre impossible.
 - **Le nom `smpltrckr` reste**, au moins pour l'instant.
 - **On commence avec Claude** comme agent. Un modèle local pourra être testé plus tard (cf. [[Stack IA locale]]).
+- **Interface en français, anglais et japonais** (03/10/2026). La langue suit le système (`LANG`…), et `--lang fr|en|ja` ou `SMPLTRCKR_LANG` permettent de l'imposer. Le côté agent (outils MCP, guide, messages) reste en anglais. Le code est commenté en anglais, avec de temps en temps un clin d'œil en français, ton hacker et pirate, sans en faire trop.
 - **Le mixage par voie (coupure, solo, volume) vaut pour la session seulement**, puisque le `.mod` ne le stocke pas. Un petit fichier à côté du morceau pourra venir plus tard si le besoin se fait sentir.
 - **Dépôt public à la fin, sur le compte GitHub `jbheren`**, avec des commits au nom de JB (voir § 9).
 

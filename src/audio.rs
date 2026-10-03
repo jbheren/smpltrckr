@@ -1,4 +1,4 @@
-//! Sortie audio temps réel (cpal) alimentée par le replayer.
+//! Real-time audio output (cpal), fed by the replayer.
 
 use std::sync::{Arc, Mutex};
 
@@ -7,16 +7,17 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample, StreamConfig};
 
 use crate::replayer::Replayer;
+use rust_i18n::t;
 
-/// Ouvre la sortie par défaut. `make` reçoit la fréquence de la carte et construit le replayer.
-/// Le replayer reste accessible via le `Mutex` renvoyé, verrouillé brièvement par le
-/// callback audio ; les autres threads ne doivent le prendre que pour de courtes opérations.
+/// Opens the default output. `make` gets the device sample rate and builds the replayer.
+/// The replayer stays reachable through the returned `Mutex`, locked briefly by the audio
+/// callback; other threads must only hold it for short operations.
 pub fn start(
     make: impl FnOnce(u32) -> Replayer,
 ) -> anyhow::Result<(cpal::Stream, Arc<Mutex<Replayer>>)> {
     let device = cpal::default_host()
         .default_output_device()
-        .context("aucune sortie audio par défaut")?;
+        .with_context(|| t!("audio.no_output"))?;
     let supported = device.default_output_config()?;
     let config = supported.config();
     let replayer = Arc::new(Mutex::new(make(config.sample_rate)));
@@ -24,7 +25,7 @@ pub fn start(
         SampleFormat::F32 => build::<f32>(&device, &config, replayer.clone()),
         SampleFormat::I16 => build::<i16>(&device, &config, replayer.clone()),
         SampleFormat::I32 => build::<i32>(&device, &config, replayer.clone()),
-        other => anyhow::bail!("format d'échantillon non géré : {other}"),
+        other => anyhow::bail!(t!("audio.unsupported_format", format = other)),
     }?;
     stream.play()?;
     Ok((stream, replayer))
@@ -39,7 +40,7 @@ where
     T: SizedSample + FromSample<f32>,
 {
     let channels = config.channels as usize;
-    // Tampon stéréo préalloué, agrandi seulement si la carte demande plus que prévu.
+    // Preallocated stereo buffer, grown only if the device asks for more than expected.
     let mut stereo = vec![0.0f32; 2 * 8192];
     Ok(device.build_output_stream(
         *config,
@@ -65,7 +66,7 @@ where
                 }
             }
         },
-        |err| eprintln!("erreur audio : {err}"),
+        |err| eprintln!("{}", t!("audio.error", error = err)),
         None,
     )?)
 }

@@ -1,32 +1,32 @@
-//! Samples : génération de formes d'onde et de percussions, import de WAV et d'AIFF.
+//! Samples: generated waveforms and drums, WAV and AIFF import.
 //!
-//! Tout finit en 8 bits signés mono, le format du `.mod`.
+//! Everything ends up as signed 8-bit mono, the `.mod` way.
 
 use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
+use rust_i18n::t;
 
 use crate::note;
 use crate::song::{MAX_SAMPLE_BYTES, Sample};
 
-/// Fréquence de lecture d'un sample joué en C-3 (≈ 16 574 Hz) : les percussions sont
-/// calculées pour cette note.
+/// Playback rate of a sample played at C-3 (≈ 16,574 Hz): drums are built for that note.
 fn c3_rate() -> f64 {
     note::period_to_hz(note::PERIODS[24])
 }
 
-/// Formes d'onde disponibles pour `generate`.
+/// Waveforms available to `generate`.
 pub const WAVEFORMS: [&str; 9] = [
     "sine", "square", "pulse", "saw", "triangle", "noise", "kick", "snare", "hihat",
 ];
 
-/// Génère un sample.
+/// Generates a sample.
 ///
-/// - Formes tonales (`sine`, `square`, `pulse` à 25 %, `saw`, `triangle`) : un cycle de
-///   `cycle` octets, en boucle. Avec 32 octets, la note C-2 sonne à peu près comme un do 4
-///   (259 Hz), C-3 un octave au-dessus.
-/// - `noise` : 4 096 octets de bruit blanc en boucle.
-/// - Percussions (`kick`, `snare`, `hihat`) : sans boucle, à jouer en C-3.
+/// - Tonal waveforms (`sine`, `square`, `pulse` at 25 %, `saw`, `triangle`): one cycle of
+///   `cycle` bytes, looped. With 32 bytes, C-2 sounds roughly like a middle C (259 Hz), and
+///   C-3 an octave above.
+/// - `noise`: 4,096 bytes of looped white noise.
+/// - Drums (`kick`, `snare`, `hihat`): one-shot, to be played at C-3.
 pub fn generate(waveform: &str, cycle: usize) -> anyhow::Result<Sample> {
     let cycle = cycle.clamp(2, 1024) & !1;
     let mut noise = Noise(0x2545_f491);
@@ -58,7 +58,7 @@ pub fn generate(waveform: &str, cycle: usize) -> anyhow::Result<Sample> {
             let mut last = 0.0;
             (
                 drum(0.09, |t, n| {
-                    // Bruit passé en passe-haut (différence de deux tirages) : plus métallique.
+                    // High-passed noise (difference of two draws): more metallic.
                     let high = n - last;
                     last = n;
                     0.6 * high * (-t / 0.025).exp()
@@ -66,10 +66,11 @@ pub fn generate(waveform: &str, cycle: usize) -> anyhow::Result<Sample> {
                 false,
             )
         }
-        other => bail!(
-            "forme d'onde inconnue {other:?} (au choix : {})",
-            WAVEFORMS.join(", ")
-        ),
+        other => bail!(t!(
+            "samples.unknown_waveform",
+            waveform = other,
+            choices = WAVEFORMS.join(", ")
+        )),
     };
     sample.set_name(waveform);
     sample.set_data(data.iter().map(|&x| to_i8(x * 0.95)).collect());
@@ -81,7 +82,7 @@ pub fn generate(waveform: &str, cycle: usize) -> anyhow::Result<Sample> {
 }
 
 fn kick() -> Vec<f64> {
-    // Sinus dont la hauteur tombe de 150 à 45 Hz, avec une décroissance rapide.
+    // A sine whose pitch falls from 150 to 45 Hz, with a fast decay.
     let rate = c3_rate();
     let mut phase = 0.0;
     (0..(0.45 * rate) as usize)
@@ -93,7 +94,7 @@ fn kick() -> Vec<f64> {
         .collect()
 }
 
-/// Percussion de `seconds` secondes : `f(t, bruit)` donne chaque échantillon.
+/// A drum of `seconds` seconds: `f(t, noise)` gives each sample.
 fn drum(seconds: f64, mut f: impl FnMut(f64, f64) -> f64) -> Vec<f64> {
     let rate = c3_rate();
     let mut noise = Noise(0x9e37_79b9);
@@ -102,7 +103,7 @@ fn drum(seconds: f64, mut f: impl FnMut(f64, f64) -> f64) -> Vec<f64> {
         .collect()
 }
 
-/// Générateur de bruit déterministe (xorshift), pour des samples reproductibles.
+/// Deterministic noise generator (xorshift), for reproducible samples.
 struct Noise(u32);
 
 impl Noise {
@@ -118,37 +119,37 @@ fn to_i8(x: f64) -> i8 {
     (x * 127.0).round().clamp(-128.0, 127.0) as i8
 }
 
-// --- Import ---------------------------------------------------------------------------------
+// --- Import ----------------------------------------------------------------------------------
 
-/// Son décodé : mono, en flottants, avec sa fréquence et sa boucle éventuelle (en trames).
+/// Decoded sound: mono floats, with its sample rate and optional loop (in frames).
 pub struct Decoded {
     pub samples: Vec<f32>,
     pub rate: u32,
     pub loop_frames: Option<(usize, usize)>,
 }
 
-/// Bilan d'un import, à montrer à l'utilisateur ou à l'agent.
+/// Import report, to show to the user or the agent.
 pub struct ImportReport {
     pub sample: Sample,
     pub rate: u32,
     pub truncated: bool,
-    /// Note à laquelle le sample sonne à sa hauteur d'origine, si elle existe dans C-1 … B-3.
+    /// Note at which the sample plays at its original pitch, if one exists in C-1 … B-3.
     pub natural_note: Option<String>,
 }
 
-/// Importe un WAV ou un AIFF : mixage mono, 8 bits, sans rééchantillonnage.
-/// `halve` divise la fréquence par deux (une trame sur deux, moyennée) pour gagner de la place.
+/// Imports a WAV or AIFF: mono mix, 8 bits, no resampling. `halve` halves the sample rate
+/// (averaging frame pairs) to save room.
 pub fn import(path: &Path, halve: bool) -> anyhow::Result<ImportReport> {
-    let data = std::fs::read(path).with_context(|| format!("lecture de {}", path.display()))?;
+    let data =
+        std::fs::read(path).with_context(|| t!("samples.read_failed", path = path.display()))?;
     let mut decoded = match &data.get(..4) {
         Some(b"RIFF") => decode_wav(&data)?,
         Some(b"FORM") => decode_aiff(&data)?,
-        _ => bail!("{} : ni WAV ni AIFF", path.display()),
+        _ => bail!(t!("samples.not_audio", path = path.display())),
     };
     ensure!(
         !decoded.samples.is_empty(),
-        "{} : aucun son",
-        path.display()
+        t!("samples.silent", path = path.display())
     );
     if halve {
         decoded.samples = decoded
@@ -202,7 +203,7 @@ fn u32_be(b: &[u8]) -> u32 {
     u32::from_be_bytes([b[0], b[1], b[2], b[3]])
 }
 
-/// Parcourt les blocs d'un fichier RIFF ou IFF : (identifiant, contenu).
+/// Walks the chunks of a RIFF or IFF file: (id, body).
 fn chunks(data: &[u8], big_endian: bool) -> Vec<(&[u8], &[u8])> {
     let mut out = Vec::new();
     let mut pos = 12;
@@ -219,7 +220,7 @@ fn chunks(data: &[u8], big_endian: bool) -> Vec<(&[u8], &[u8])> {
     out
 }
 
-/// Convertit des trames PCM entrelacées en mono flottant.
+/// Turns interleaved PCM frames into mono floats.
 fn to_mono(
     bytes: &[u8],
     channels: usize,
@@ -230,7 +231,7 @@ fn to_mono(
     let width = (bits as usize).div_ceil(8);
     ensure!(
         channels > 0 && (1..=8).contains(&width),
-        "format audio invalide ({bits} bits)"
+        t!("samples.bad_format", bits = bits)
     );
     let read = |b: &[u8]| -> f32 {
         let mut v = [0u8; 8];
@@ -240,7 +241,7 @@ fn to_mono(
         match (float, width) {
             (true, 4) => f32::from_le_bytes([v[0], v[1], v[2], v[3]]),
             (true, _) => f64::from_le_bytes(v) as f32,
-            // Le WAV 8 bits est non signé ; l'AIFF 8 bits est signé.
+            // 8-bit WAV is unsigned; 8-bit AIFF is signed.
             (false, 1) if !big_endian => (v[0] as f32 - 128.0) / 128.0,
             (false, w) => {
                 let raw = i64::from_le_bytes(v) << (64 - 8 * w) >> (64 - 8 * w);
@@ -251,7 +252,7 @@ fn to_mono(
     if float {
         ensure!(
             width == 4 || width == 8,
-            "flottants de {bits} bits non pris en charge"
+            t!("samples.float_bits", bits = bits)
         );
     }
     Ok(bytes
@@ -261,7 +262,10 @@ fn to_mono(
 }
 
 fn decode_wav(data: &[u8]) -> anyhow::Result<Decoded> {
-    ensure!(data.len() > 12 && &data[8..12] == b"WAVE", "WAV invalide");
+    ensure!(
+        data.len() > 12 && &data[8..12] == b"WAVE",
+        t!("samples.bad_wav")
+    );
     let (mut format, mut channels, mut rate, mut bits) = (0u16, 0usize, 0u32, 0u16);
     let (mut samples, mut loop_frames) = (None, None);
     for (id, body) in chunks(data, false) {
@@ -278,11 +282,11 @@ fn decode_wav(data: &[u8]) -> anyhow::Result<Decoded> {
             b"data" => {
                 ensure!(
                     format == 1 || format == 3,
-                    "WAV compressé (format {format}) non pris en charge"
+                    t!("samples.compressed_wav", format = format)
                 );
                 samples = Some(to_mono(body, channels, bits, format == 3, false)?);
             }
-            // Bloc « smpl » : la première boucle, en trames (fin incluse).
+            // "smpl" chunk: the first loop, in frames (end included).
             b"smpl" if body.len() >= 36 + 24 && u32_le(&body[28..]) > 0 => {
                 loop_frames = Some((
                     u32_le(&body[44..]) as usize,
@@ -293,18 +297,18 @@ fn decode_wav(data: &[u8]) -> anyhow::Result<Decoded> {
         }
     }
     Ok(Decoded {
-        samples: samples.context("WAV sans données")?,
+        samples: samples.with_context(|| t!("samples.no_data"))?,
         rate,
         loop_frames,
     })
 }
 
 fn decode_aiff(data: &[u8]) -> anyhow::Result<Decoded> {
-    ensure!(data.len() > 12, "AIFF invalide");
+    ensure!(data.len() > 12, t!("samples.bad_aiff"));
     let aifc = match &data[8..12] {
         b"AIFF" => false,
         b"AIFC" => true,
-        _ => bail!("AIFF invalide"),
+        _ => bail!(t!("samples.bad_aiff")),
     };
     let (mut channels, mut bits, mut rate) = (0usize, 0u16, 0u32);
     let (mut little_endian, mut float) = (false, false);
@@ -320,30 +324,30 @@ fn decode_aiff(data: &[u8]) -> anyhow::Result<Decoded> {
                         b"NONE" | b"twos" => {}
                         b"sowt" => little_endian = true,
                         b"fl32" | b"FL32" => float = true,
-                        other => bail!(
-                            "AIFF-C compressé ({}) non pris en charge",
-                            String::from_utf8_lossy(other)
-                        ),
+                        other => bail!(t!(
+                            "samples.compressed_aiff",
+                            codec = String::from_utf8_lossy(other)
+                        )),
                     }
                 }
             }
             b"SSND" if body.len() >= 8 => {
                 let offset = u32_be(&body[0..]) as usize + 8;
                 let pcm = body.get(offset..).unwrap_or_default();
-                // Les flottants AIFF sont gros-boutistes : on les retourne comme des entiers.
+                // AIFF floats are big-endian: flip them like integers.
                 samples = Some(to_mono(pcm, channels, bits, float, !little_endian)?);
             }
             _ => {}
         }
     }
     Ok(Decoded {
-        samples: samples.context("AIFF sans données")?,
+        samples: samples.with_context(|| t!("samples.no_data"))?,
         rate,
         loop_frames: None,
     })
 }
 
-/// Flottant étendu IEEE 754 sur 80 bits (fréquence d'échantillonnage des AIFF).
+/// 80-bit IEEE 754 extended float (the AIFF sample rate).
 fn extended_to_f64(b: &[u8]) -> f64 {
     let exponent = (u16::from_be_bytes([b[0], b[1]]) & 0x7FFF) as i32;
     let mantissa = u64::from_be_bytes(b[2..10].try_into().unwrap());
@@ -377,7 +381,7 @@ mod tests {
             let s = generate(w, 32).unwrap();
             assert_eq!(s.loop_length, 1, "{w}");
             let tail = &s.data[s.data.len() - 50..];
-            assert!(tail.iter().all(|x| x.abs() < 8), "{w} ne s'éteint pas");
+            assert!(tail.iter().all(|x| x.abs() < 8), "{w} does not fade out");
         }
         assert!(generate("gong", 32).is_err());
     }
@@ -389,7 +393,7 @@ mod tests {
     #[test]
     fn imports_a_stereo_wav() {
         let path = temp("stereo.wav");
-        // Stéréo 16 bits : gauche à 0,5, droite à 0 → mono à 0,25.
+        // 16-bit stereo: left at 0.5, right at 0 → mono at 0.25.
         let frames: Vec<f32> = (0..1000).flat_map(|_| [0.5, 0.0]).collect();
         crate::wav::write(&path, &frames, 2, 16574).unwrap();
         let report = import(&path, false).unwrap();
@@ -406,7 +410,7 @@ mod tests {
 
     #[test]
     fn imports_an_aiff_and_halves_it() {
-        // AIFF mono 16 bits à 44 100 Hz, 4 trames.
+        // 16-bit mono AIFF at 44,100 Hz, 4 frames.
         let mut ssnd = vec![0u8; 8];
         for v in [16384i16, 16384, -16384, -16384] {
             ssnd.extend_from_slice(&v.to_be_bytes());

@@ -1,18 +1,18 @@
-//! Moniteur : ce que le replayer publie pour l'affichage (oscilloscopes, VU-mètres, position).
+//! Monitor: what the replayer publishes for the display (scopes, meters, position).
 //!
-//! Un seul écrivain (le thread audio) et des lecteurs quelconques, sans verrou : chaque
-//! échantillon est un `AtomicU32`. Un lecteur peut voir un tampon à moitié mis à jour, ce qui
-//! est sans conséquence pour un affichage.
+//! One writer (the audio thread) and any number of readers, lock-free: each sample is an
+//! `AtomicU32`. A reader may see a half-updated buffer, which does no harm to a display.
+//!
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering::Relaxed};
 
-/// Nombre d'échantillons gardés par voie (environ 43 ms à 48 kHz).
+/// Samples kept per voice (about 43 ms at 48 kHz).
 pub const SCOPE_LEN: usize = 2048;
 
 pub struct Monitor {
     voices: usize,
-    /// `voices + 1` tampons circulaires (le dernier est le master), à la suite.
+    /// `voices + 1` ring buffers (the last one is the master), back to back.
     samples: Vec<AtomicU32>,
     write: AtomicUsize,
     position: AtomicUsize,
@@ -50,13 +50,12 @@ impl Monitor {
         self.row.store(row, Relaxed);
     }
 
-    /// Position (dans la liste d'ordre) et ligne en cours de lecture.
+    /// Position (in the order list) and row being played.
     pub fn position(&self) -> (usize, usize) {
         (self.position.load(Relaxed), self.row.load(Relaxed))
     }
 
-    /// Copie les `out.len()` derniers échantillons d'une voie (`None` = master), du plus ancien
-    /// au plus récent.
+    /// Copies the last `out.len()` samples of a voice (`None` = master), oldest first.
     pub fn scope(&self, voice: Option<usize>, out: &mut [f32]) {
         let base = voice.unwrap_or(self.voices).min(self.voices) * SCOPE_LEN;
         let end = self.write.load(Relaxed);
@@ -67,7 +66,7 @@ impl Monitor {
         }
     }
 
-    /// Crête récente d'une voie (`None` = master), de 0.0 à 1.0.
+    /// Recent peak of a voice (`None` = master), from 0.0 to 1.0.
     pub fn level(&self, voice: Option<usize>) -> f32 {
         let mut recent = [0.0f32; 512];
         self.scope(voice, &mut recent);

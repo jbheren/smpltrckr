@@ -1,27 +1,46 @@
-//! Affichage : en-tête, pattern avec un VU-mètre sous chaque voie, liste d'ordre, samples,
-//! master, ligne d'état et dialogues.
+//! Drawing: header, pattern with a scope under each voice, order list, samples, master, key
+//! hints, status line and dialogs.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, Paragraph};
+use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
+use rust_i18n::t;
+use unicode_width::UnicodeWidthStr;
 
 use super::app::{App, Field};
 use super::dialog::Dialog;
+use super::effects;
 use super::keys::{FOCUS_HINTS, Focus, HELP};
 use crate::format::text::cell_to_text;
 use crate::monitor::{Monitor, SCOPE_LEN};
 
 const DIM: Color = Color::DarkGray;
-/// Largeur minimale d'une colonne de voie : « │ C-3 01 A04 » et une marge.
+/// Smallest voice column: "│ C-3 01 A04" plus a margin.
 const MIN_VOICE_WIDTH: u16 = 13;
+/// Scope height, in text rows (4 Braille dots per row).
+const SCOPE_HEIGHT: u16 = 4;
+/// Waveform zoom: a voice rarely goes past half scale, and the master is scaled down by the
+/// mix (2 / voice count).
+const VOICE_SCOPE_GAIN: f32 = 2.0;
+const MASTER_SCOPE_GAIN: f32 = 3.0;
+/// Effects shown on the second help page, one translation id each (`effect.help.<id>`).
+const EFFECT_HELP: &[&str] = &[
+    "0", "1", "2", "3", "4", "5", "6", "7", "9", "A", "B", "C", "D", "E1", "E2", "E4", "E5", "E6",
+    "E7", "E9", "EA", "EB", "EC", "ED", "EE", "F",
+];
+
+/// Pads `text` with spaces up to `width` terminal columns (a Japanese character takes two).
+fn pad_to(text: &str, width: usize) -> String {
+    format!("{text}{}", " ".repeat(width.saturating_sub(text.width())))
+}
 
 pub fn draw(f: &mut Frame, app: &App) {
     let [header, body, hints, status] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(10),
-        Constraint::Length(1),
+        Constraint::Length(2),
         Constraint::Length(1),
     ])
     .areas(f.area());
@@ -39,7 +58,10 @@ pub fn draw(f: &mut Frame, app: &App) {
     draw_orders(f, app, orders);
     draw_samples(f, app, samples);
     draw_master(f, app, master);
-    f.render_widget(hint_line(app), hints);
+    f.render_widget(
+        Paragraph::new(hint_line(app)).wrap(Wrap { trim: true }),
+        hints,
+    );
     f.render_widget(Line::from(app.status.as_str()).fg(Color::Gray), status);
 
     if let Some(dialog) = &app.dialog {
@@ -47,14 +69,41 @@ pub fn draw(f: &mut Frame, app: &App) {
     }
 }
 
-/// Touches utiles dans la zone active, toujours visibles en bas de l'écran.
+/// Bottom hints (two rows, wrapped): on an effect column, what the effect under the cursor
+/// does (or the effects to pick from); elsewhere, the useful keys of the active zone.
 fn hint_line(app: &App) -> Line<'static> {
-    let hints = match app.focus {
-        Focus::Pattern if app.edit_mode => FOCUS_HINTS[0].1,
-        Focus::Pattern => FOCUS_HINTS[1].1,
-        Focus::Orders => FOCUS_HINTS[2].1,
-        Focus::Samples => FOCUS_HINTS[3].1,
+    let on_effect = matches!(
+        app.field,
+        Field::Effect | Field::ParamHigh | Field::ParamLow
+    );
+    if app.focus == Focus::Pattern && on_effect {
+        let cell = app.current_cell();
+        if let Some(text) = effects::describe(cell.effect, cell.param) {
+            return Line::from(vec![
+                text.fg(Color::Magenta),
+                format!("   {}", t!("hint.effect_help")).fg(DIM),
+            ]);
+        }
+        let palette = if cell.effect == 0xE {
+            effects::extended_palette()
+        } else {
+            effects::palette()
+        };
+        let prefix = if cell.effect == 0xE { "E" } else { "" };
+        let mut spans = vec![format!("{} ", t!("hint.effects")).fg(DIM)];
+        for (digit, name) in palette {
+            spans.push(format!("{prefix}{digit}").fg(Color::Magenta));
+            spans.push(format!(" {name}  ").fg(DIM));
+        }
+        return Line::from(spans);
+    }
+    let id = match app.focus {
+        Focus::Pattern if app.edit_mode => FOCUS_HINTS[0],
+        Focus::Pattern => FOCUS_HINTS[1],
+        Focus::Orders => FOCUS_HINTS[2],
+        Focus::Samples => FOCUS_HINTS[3],
     };
+    let hints = t!(id);
     let mut spans = Vec::new();
     for (i, part) in hints.split(" · ").enumerate() {
         if i > 0 {
@@ -68,11 +117,7 @@ fn hint_line(app: &App) -> Line<'static> {
 }
 
 fn panel(title: String, focused: bool) -> Block<'static> {
-    let style = if focused {
-        Style::new().fg(Color::Cyan)
-    } else {
-        Style::new().fg(DIM)
-    };
+    let style = Style::new().fg(if focused { Color::Cyan } else { DIM });
     Block::bordered().title(title).border_style(style)
 }
 
@@ -82,13 +127,16 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         .path
         .as_ref()
         .and_then(|p| p.file_name())
-        .map_or("(sans fichier)".into(), |n| {
+        .map_or(t!("view.no_file").into_owned(), |n| {
             n.to_string_lossy().into_owned()
         });
     let mode = if app.edit_mode {
-        " ÉDITION ".bold().fg(Color::White).bg(Color::Red)
+        format!(" {} ", t!("view.edit"))
+            .bold()
+            .fg(Color::White)
+            .bg(Color::Red)
     } else {
-        " écoute ".fg(DIM)
+        format!(" {} ", t!("view.listen")).fg(DIM)
     };
     let play = if app.running {
         " ▶ ".fg(Color::Black).bg(Color::Green)
@@ -103,15 +151,28 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         play,
         mode,
         format!(
-            "  oct {}  sample {:02} {}  ",
-            app.octave,
-            app.sample,
-            sample.display_name()
+            "  {}  ",
+            t!(
+                "view.octave_sample",
+                octave = app.octave,
+                sample = format!("{:02}", app.sample),
+                name = sample.display_name()
+            )
         )
         .into(),
         format!("{}  ", app.layout.name).fg(DIM),
-        format!("vit {} · {} BPM  ", app.tempo.0, app.tempo.1).fg(Color::Yellow),
-        format!("pos {:02}/{:02}", app.position, song.order_list().len() - 1).fg(DIM),
+        format!(
+            "{}  ",
+            t!("view.tempo", speed = app.tempo.0, bpm = app.tempo.1)
+        )
+        .fg(Color::Yellow),
+        t!(
+            "view.position",
+            position = format!("{:02}", app.position),
+            last = format!("{:02}", song.order_list().len() - 1)
+        )
+        .into_owned()
+        .fg(DIM),
     ]);
     f.render_widget(line, area);
 }
@@ -125,8 +186,9 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
     } else {
         DIM
     };
+    let title = format!(" {} ", t!("view.pattern", pattern = format!("{p:02}")));
     let block = Block::bordered()
-        .title(format!(" pattern {p:02} "))
+        .title(title)
         .border_style(Style::new().fg(border));
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -141,21 +203,19 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
     let channels = app.channels();
     let mixer = &app.editor.mixer;
     let audible = |v: usize| mixer.audible(v);
-    // Les colonnes des voies se partagent la largeur disponible.
+    // Voice columns share the available width.
     let width = ((inner.width.saturating_sub(3)) / channels as u16).max(MIN_VOICE_WIDTH) as usize;
-    let pad = |used: usize| " ".repeat(width.saturating_sub(used));
 
-    // En-tête des voies.
+    // Voice headers.
     let mut head = vec![Span::raw("   ")];
     for v in 0..channels {
         let style = Style::new().fg(if audible(v) { Color::Cyan } else { DIM });
-        let label = format!("│ voie {}", v + 1);
-        let used = label.chars().count();
-        head.push(Span::styled(label + &pad(used), style));
+        let label = format!("│ {}", t!("view.voice", voice = v + 1));
+        head.push(Span::styled(pad_to(&label, width), style));
     }
     f.render_widget(Line::from(head), voices_header);
 
-    // Grille : la ligne du curseur reste au milieu, comme dans ProTracker.
+    // Grid: the cursor row stays in the middle, as in ProTracker.
     let pattern = &app.song().patterns[p];
     let height = grid.height as usize;
     let lines: Vec<Line> = (0..height)
@@ -178,7 +238,7 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
                 let cursor_field = (offset == 0 && v == app.voice && app.focus == Focus::Pattern)
                     .then_some(app.field);
                 spans.extend(cell_spans(&text, cursor_field, audible(v)));
-                spans.push(pad(12).into());
+                spans.push(" ".repeat(width.saturating_sub(12)).into());
             }
             let line = Line::from(spans);
             match (offset, app.running) {
@@ -190,7 +250,7 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
         .collect();
     f.render_widget(Paragraph::new(lines), grid);
 
-    // Oscilloscope et état sous chaque voie.
+    // Scope and state under each voice.
     let mut state_line = vec![Span::raw("   ")];
     for v in 0..channels {
         let x = scopes.x + 3 + (v * width) as u16;
@@ -213,41 +273,36 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
         };
         let color = if audible(v) { Color::Green } else { DIM };
         let wave = triggered_scope(&app.audio.monitor, Some(v));
-        f.render_widget(
-            Paragraph::new(scope(
-                &wave,
-                scope_area.width as usize,
-                SCOPE_HEIGHT as usize,
-                VOICE_SCOPE_GAIN,
-                color,
-            )),
-            scope_area,
+        let lines = scope(
+            &wave,
+            scope_area.width as usize,
+            SCOPE_HEIGHT as usize,
+            VOICE_SCOPE_GAIN,
+            color,
         );
+        f.render_widget(Paragraph::new(lines), scope_area);
 
         let state = match (mixer.mute[v], mixer.solo[v]) {
-            (_, true) => " SOLO ".fg(Color::Black).bg(Color::Yellow),
-            (true, _) => " coupée ".fg(Color::White).bg(Color::Red),
+            (_, true) => format!(" {} ", t!("view.solo"))
+                .fg(Color::Black)
+                .bg(Color::Yellow),
+            (true, _) => format!(" {} ", t!("view.muted"))
+                .fg(Color::White)
+                .bg(Color::Red),
             _ => "".into(),
         };
         let volume = format!("{:>3} % ", (mixer.volume[v] * 100.0).round() as u32);
-        let used = 2 + volume.chars().count() + state.content.chars().count();
+        let used = 2 + volume.width() + state.content.width();
         state_line.push("│ ".fg(DIM));
         state_line.push(volume.fg(if audible(v) { Color::Gray } else { DIM }));
         state_line.push(state);
-        state_line.push(pad(used).into());
+        state_line.push(" ".repeat(width.saturating_sub(used)).into());
     }
     f.render_widget(Line::from(state_line), states);
 }
 
-/// Hauteur des oscilloscopes, en lignes de texte (4 points Braille par ligne).
-const SCOPE_HEIGHT: u16 = 4;
-/// Agrandissement des formes d'onde : une voie dépasse rarement la moitié de l'échelle, et le
-/// master est atténué par le mixage (2 / nombre de voies).
-const VOICE_SCOPE_GAIN: f32 = 2.0;
-const MASTER_SCOPE_GAIN: f32 = 3.0;
-
-/// Échantillons récents d'une voie (`None` = master), calés sur un passage par zéro montant
-/// pour que la forme d'onde reste immobile d'une image à l'autre.
+/// Recent samples of a voice (`None` = master), locked onto a rising zero crossing so the
+/// waveform stands still from one frame to the next.
 fn triggered_scope(monitor: &Monitor, voice: Option<usize>) -> Vec<f32> {
     let mut all = vec![0.0f32; SCOPE_LEN];
     monitor.scope(voice, &mut all);
@@ -258,8 +313,8 @@ fn triggered_scope(monitor: &Monitor, voice: Option<usize>) -> Vec<f32> {
     all[start..start + shown].to_vec()
 }
 
-/// Forme d'onde en caractères Braille (2 × 4 points par caractère). Chaque colonne de points
-/// couvre plusieurs échantillons : on trace le segment de leur minimum à leur maximum.
+/// Waveform in Braille characters (2 × 4 dots each). Each dot column covers several samples:
+/// draw the segment from their minimum to their maximum.
 fn scope(
     samples: &[f32],
     width: usize,
@@ -285,7 +340,7 @@ fn scope(
             .iter()
             .fold((f32::MAX, f32::MIN), |(lo, hi), &s| (lo.min(s), hi.max(s)));
         let (mut top, mut bottom) = (to_y(hi), to_y(lo));
-        // Relie au dernier point de la colonne précédente : la courbe reste continue.
+        // Join the last dot of the previous column: the curve stays continuous.
         if let Some(y) = previous {
             (top, bottom) = (top.min(y), bottom.max(y));
         }
@@ -312,7 +367,7 @@ fn scope(
         .collect()
 }
 
-/// Les cinq morceaux d'une cellule, avec le champ du curseur en inverse.
+/// The pieces of a cell, with the cursor field in reverse video.
 fn cell_spans(text: &str, cursor: Option<Field>, audible: bool) -> Vec<Span<'static>> {
     let chars: Vec<char> = text.chars().collect();
     let part = |range: std::ops::Range<usize>| chars[range].iter().collect::<String>();
@@ -339,7 +394,7 @@ fn cell_spans(text: &str, cursor: Option<Field>, audible: bool) -> Vec<Span<'sta
     spans
 }
 
-/// Barre de niveau horizontale, au huitième de caractère près.
+/// Horizontal level bar, to an eighth of a character.
 fn meter(level: f32, width: usize, active: bool) -> Vec<Span<'static>> {
     const EIGHTHS: [char; 8] = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉'];
     let filled = (level.clamp(0.0, 1.0) * width as f32 * 8.0).round() as usize;
@@ -365,7 +420,10 @@ fn meter(level: f32, width: usize, active: bool) -> Vec<Span<'static>> {
 }
 
 fn draw_orders(f: &mut Frame, app: &App, area: Rect) {
-    let block = panel(" ordre (F6) ".into(), app.focus == Focus::Orders);
+    let block = panel(
+        format!(" {} ", t!("view.orders")),
+        app.focus == Focus::Orders,
+    );
     let inner = block.inner(area);
     f.render_widget(block, area);
     let orders = app.song().order_list();
@@ -376,7 +434,10 @@ fn draw_orders(f: &mut Frame, app: &App, area: Rect) {
         .skip(first)
         .take(inner.height as usize)
         .map(|(i, &p)| {
-            let line = Line::from(format!(" {i:02}  pattern {p:02}"));
+            let line = Line::from(format!(
+                " {i:02}  {}",
+                t!("view.pattern", pattern = format!("{p:02}"))
+            ));
             if i == app.position {
                 line.style(Style::new().bg(Color::Rgb(40, 40, 60)).bold())
             } else {
@@ -388,7 +449,10 @@ fn draw_orders(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_samples(f: &mut Frame, app: &App, area: Rect) {
-    let block = panel(" samples (F7) ".into(), app.focus == Focus::Samples);
+    let block = panel(
+        format!(" {} ", t!("view.samples")),
+        app.focus == Focus::Samples,
+    );
     let inner = block.inner(area);
     f.render_widget(block, area);
     let samples = &app.song().samples;
@@ -418,16 +482,14 @@ fn draw_master(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(block, area);
     let [wave, bar] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
     let samples = triggered_scope(&app.audio.monitor, None);
-    f.render_widget(
-        Paragraph::new(scope(
-            &samples,
-            wave.width as usize,
-            wave.height as usize,
-            MASTER_SCOPE_GAIN,
-            Color::Cyan,
-        )),
-        wave,
+    let lines = scope(
+        &samples,
+        wave.width as usize,
+        wave.height as usize,
+        MASTER_SCOPE_GAIN,
+        Color::Cyan,
     );
+    f.render_widget(Paragraph::new(lines), wave);
     let level = app.audio.monitor.level(None);
     f.render_widget(
         Line::from(meter(level * 2.0, bar.width as usize, true)),
@@ -435,7 +497,7 @@ fn draw_master(f: &mut Frame, app: &App, area: Rect) {
     );
 }
 
-/// Premier élément affiché pour garder `selected` visible dans une liste de `len` éléments.
+/// First item shown so that `selected` stays visible in a list of `len` items.
 fn scroll(selected: usize, len: usize, height: usize) -> usize {
     if len <= height {
         0
@@ -444,25 +506,57 @@ fn scroll(selected: usize, len: usize, height: usize) -> usize {
     }
 }
 
+/// Lines of a help page: keys, or effects.
+fn help_lines(page: usize) -> Vec<Line<'static>> {
+    let rows: Vec<(String, String)> = if page == 0 {
+        HELP.iter()
+            .map(|id| {
+                (
+                    t!(format!("help.{id}.keys")).into_owned(),
+                    t!(format!("help.{id}.what")).into_owned(),
+                )
+            })
+            .collect()
+    } else {
+        EFFECT_HELP
+            .iter()
+            .map(|id| {
+                let text = t!(format!("effect.help.{id}")).into_owned();
+                let (code, what) = text.split_once("  ").unwrap_or((&text, ""));
+                (code.to_string(), what.trim().to_string())
+            })
+            .collect()
+    };
+    let key_width = rows.iter().map(|(k, _)| k.width()).max().unwrap_or(0) + 2;
+    let color = if page == 0 {
+        Color::Cyan
+    } else {
+        Color::Magenta
+    };
+    rows.into_iter()
+        .map(|(k, what)| Line::from(vec![pad_to(&k, key_width).fg(color), what.into()]))
+        .collect()
+}
+
 fn draw_dialog(f: &mut Frame, dialog: &Dialog) {
     let area = f.area();
-    let (title, lines, width, height): (String, Vec<Line>, u16, u16) =
+    let (title, lines, width): (String, Vec<Line>, u16) =
         match dialog {
-            Dialog::Help => {
-                let lines = HELP
-                    .iter()
-                    .map(|(k, a)| Line::from(vec![format!("{k:<32}").fg(Color::Cyan), (*a).into()]))
-                    .collect();
-                (
-                    " aide — Échap pour fermer ".into(),
-                    lines,
-                    96,
-                    HELP.len() as u16 + 2,
-                )
+            Dialog::Help(page) => {
+                let title = if *page == 0 {
+                    t!("dialog.help_keys")
+                } else {
+                    t!("dialog.help_effects")
+                };
+                (format!(" {title} "), help_lines(*page), 100)
             }
             Dialog::Prompt(p) => {
                 let lines = vec![Line::from(vec![p.text.clone().into(), "█".fg(Color::Cyan)])];
-                (format!(" {} — Entrée / Échap ", p.label), lines, 70, 3)
+                (
+                    format!(" {} — {} ", p.label, t!("dialog.prompt_keys")),
+                    lines,
+                    70,
+                )
             }
             Dialog::Choice(c) => {
                 let lines = c
@@ -478,12 +572,7 @@ fn draw_dialog(f: &mut Frame, dialog: &Dialog) {
                         }
                     })
                     .collect();
-                (
-                    format!(" {} ", c.label),
-                    lines,
-                    40,
-                    c.items.len() as u16 + 2,
-                )
+                (format!(" {} ", c.label), lines, 40)
             }
             Dialog::Browser(b) => {
                 let visible = (area.height.saturating_sub(8)) as usize;
@@ -505,17 +594,15 @@ fn draw_dialog(f: &mut Frame, dialog: &Dialog) {
                         }
                     },
                 ));
-                let height = lines.len() as u16 + 2;
                 (
-                    format!(" {} — Entrée, ← dossier parent, Échap ", b.title),
+                    format!(" {} — {} ", b.title, t!("dialog.browser_keys")),
                     lines,
                     70,
-                    height,
                 )
             }
         };
     let width = width.min(area.width);
-    let height = height.min(area.height);
+    let height = (lines.len() as u16 + 2).min(area.height);
     let rect = Rect {
         x: area.x + (area.width - width) / 2,
         y: area.y + (area.height - height) / 2,
@@ -561,72 +648,107 @@ mod tests {
 
     #[test]
     fn shows_pattern_meters_and_panels() {
-        let song = Song::new("écran");
+        let song = Song::new("screen");
         let mut app = App::new(song.clone(), None, Audio::silent(&song));
         app.handle_key(KeyEvent::from(KeyCode::Char(' ')));
         app.handle_key(KeyEvent::from(KeyCode::Char('z')));
         app.editor.mixer.mute[2] = true;
         let s = render(&app);
         for expected in [
-            "F7 samples",
+            "Space listen",
             "smpltrckr",
-            "écran",
-            "ÉDITION",
+            "screen",
+            "EDIT",
             "pattern 00",
-            "voie 4",
+            "voice 4",
             "C-2 01 ...",
-            "coupée",
-            "ordre (F6)",
+            "muted",
+            "orders (F6)",
             "samples (F7)",
             "master",
         ] {
-            assert!(s.contains(expected), "absent : {expected}\n{s}");
+            assert!(s.contains(expected), "missing: {expected}\n{s}");
         }
     }
 
     #[test]
+    fn effect_column_explains_the_effect_under_the_cursor() {
+        let song = Song::new("");
+        let mut app = App::new(song.clone(), None, Audio::silent(&song));
+        app.handle_key(KeyEvent::from(KeyCode::Char(' ')));
+        app.field = Field::Effect;
+        let s = render(&app);
+        assert!(
+            s.contains("arpeggio") && s.contains("tempo"),
+            "palette expected\n{s}"
+        );
+        for c in ['a', '0', '4'] {
+            app.handle_key(KeyEvent::from(KeyCode::Char(c)));
+            app.row = 0;
+            app.field = match app.field {
+                Field::Effect => Field::ParamHigh,
+                _ => Field::ParamLow,
+            };
+        }
+        app.field = Field::Effect;
+        let s = render(&app);
+        assert!(s.contains("A04: volume slide: down by 4 per tick"), "{s}");
+    }
+
+    #[test]
     fn scope_draws_a_continuous_wave() {
-        // Un cycle de sinus sur 8 caractères × 2 lignes : chaque colonne de points est allumée.
+        // One sine cycle over 8 characters × 2 rows: every dot column is lit.
         let wave: Vec<f32> = (0..256)
             .map(|i| (i as f32 / 256.0 * std::f32::consts::TAU).sin())
             .collect();
         let lines = scope(&wave, 8, 2, 1.0, Color::Green);
         assert_eq!(lines.len(), 2);
         let mut columns = [false; 16];
-        for (r, line) in lines.iter().enumerate() {
+        for line in &lines {
             let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
             for (c, ch) in text.chars().enumerate() {
                 let bits = (ch as u32).saturating_sub(0x2800);
                 columns[c * 2] |= bits & 0x47 != 0;
                 columns[c * 2 + 1] |= bits & 0xB8 != 0;
             }
-            assert!(r < 2);
         }
         assert!(columns.iter().all(|&c| c), "{columns:?}");
-        // Le haut de l'onde (début du cycle, sinus positif) est sur la première ligne.
+        // The top of the wave (start of the cycle, positive sine) sits on the first row.
         let first: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(first.chars().take(4).any(|c| c != ' '));
     }
 
     #[test]
-    fn shows_help_dialog() {
+    fn help_has_a_keys_page_and_an_effects_page() {
         let song = Song::new("");
         let mut app = App::new(song.clone(), None, Audio::silent(&song));
         app.handle_key(KeyEvent::from(KeyCode::Char('?')));
         let s = render(&app);
-        assert!(s.contains("aide") && s.contains("Ctrl+Q"), "{s}");
+        assert!(s.contains("Ctrl+Q") && s.contains("Tab"), "{s}");
+        app.handle_key(KeyEvent::from(KeyCode::Tab));
+        let s = render(&app);
+        assert!(s.contains("0xy") && s.contains("Fxx"), "{s}");
     }
 
-    /// Capture texte de l'écran sur un vrai morceau : `cargo test snapshot -- --ignored --nocapture`.
+    #[test]
+    fn japanese_text_keeps_columns_aligned() {
+        assert_eq!(pad_to("音量", 6).width(), 6);
+        assert_eq!(pad_to("vol", 6), "vol   ");
+    }
+
+    /// Text capture of the screen on a real song: `cargo test snapshot -- --ignored --nocapture`.
     #[test]
     #[ignore]
     fn snapshot() {
         let path = std::env::var("SNAPSHOT_MOD")
             .unwrap_or("sessions/2026-10-03-chiptune-la-mineur/morceau.mod".into());
+        if let Ok(language) = std::env::var("SNAPSHOT_LANG") {
+            crate::lang::set(&language);
+        }
         let song = crate::format::protracker::read(&std::fs::read(&path).unwrap()).unwrap();
         let mut app = App::new(song.clone(), Some(path.into()), Audio::silent(&song));
         {
-            // Deux secondes de lecture pour remplir les oscilloscopes.
+            // Two seconds of playback to fill the scopes.
             let mut r = app.audio.replayer.lock().unwrap();
             r.play(0, false);
             let mut buf = vec![0.0f32; 2 * 48000 * 2 + 2 * 3000];

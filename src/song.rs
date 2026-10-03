@@ -1,25 +1,25 @@
-//! Modèle en mémoire d'un morceau.
+//! In-memory model of a song.
 //!
-//! Le modèle garde les valeurs brutes du fichier (noms en octets, périodes, octets de fin),
-//! pour qu'un `.mod` chargé puis réenregistré reste identique à l'octet près.
-//! Le nombre de voies et de lignes est variable, pour laisser la porte ouverte au XM.
+//! The model keeps the file's raw values (names as bytes, periods, trailing bytes), so that a
+//! `.mod` loaded then saved again stays identical down to the last byte.
+//! Voice and row counts are variable, to keep the door open for XM.
 
-/// Une cellule de pattern : note (période Amiga), sample, effet.
+/// A pattern cell: note (Amiga period), sample, effect.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Cell {
-    /// Période Amiga (12 bits), 0 = pas de note.
+    /// Amiga period (12 bits), 0 = no note.
     pub period: u16,
-    /// Numéro de sample (1 à 31), 0 = pas de sample.
+    /// Sample number (1 to 31), 0 = no sample.
     pub sample: u8,
-    /// Effet (0 à F).
+    /// Effect (0 to F).
     pub effect: u8,
-    /// Paramètre de l'effet.
+    /// Effect parameter.
     pub param: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pattern {
-    /// `rows[ligne][voie]`.
+    /// `rows[row][voice]`.
     pub rows: Vec<Vec<Cell>>,
 }
 
@@ -33,20 +33,20 @@ impl Pattern {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sample {
-    /// Nom brut (22 octets, pas forcément terminé par un zéro).
+    /// Raw name (22 bytes, not necessarily zero-terminated).
     pub name: [u8; 22],
-    /// Longueur annoncée par l'en-tête, en mots de 16 bits.
-    /// Peut dépasser `data` quand le fichier est tronqué.
+    /// Length announced by the header, in 16-bit words.
+    /// May exceed `data` when the file is truncated.
     pub length_words: u16,
-    /// Octet de finetune brut (seuls les 4 bits bas comptent : -8 à +7).
+    /// Raw finetune byte (only the low 4 bits matter: -8 to +7).
     pub finetune: u8,
-    /// Volume (0 à 64).
+    /// Volume (0 to 64).
     pub volume: u8,
-    /// Début de boucle, en mots.
+    /// Loop start, in words.
     pub loop_start: u16,
-    /// Longueur de boucle, en mots (1 = pas de boucle).
+    /// Loop length, in words (1 = no loop).
     pub loop_length: u16,
-    /// Données PCM 8 bits signées, telles que présentes dans le fichier.
+    /// Signed 8-bit PCM data, as found in the file.
     pub data: Vec<i8>,
 }
 
@@ -69,7 +69,7 @@ impl Sample {
         text_from_bytes(&self.name)
     }
 
-    /// Finetune signé, de -8 à +7.
+    /// Signed finetune, from -8 to +7.
     pub fn finetune(&self) -> i8 {
         ((self.finetune & 0x0F) as i8) << 4 >> 4
     }
@@ -78,8 +78,8 @@ impl Sample {
         self.name = bytes_from_text(name);
     }
 
-    /// Remplace les données et met la longueur de l'en-tête en cohérence
-    /// (un nombre pair d'octets, au plus 65 535 mots).
+    /// Replaces the data and keeps the header length consistent
+    /// (an even number of bytes, at most 65,535 words).
     pub fn set_data(&mut self, mut data: Vec<i8>) {
         data.truncate(MAX_SAMPLE_BYTES);
         if data.len() % 2 == 1 {
@@ -90,38 +90,38 @@ impl Sample {
     }
 }
 
-/// Taille maximale d'un sample dans un `.mod` : 65 535 mots de 16 bits.
+/// Largest sample a `.mod` can hold: 65,535 16-bit words.
 pub const MAX_SAMPLE_BYTES: usize = 65_535 * 2;
 
-/// Variante du format `.mod`.
+/// Flavour of the `.mod` format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModKind {
-    /// Soundtracker d'origine : 15 samples, pas de signature, 4 voies.
+    /// The original Soundtracker: 15 samples, no tag, 4 voices.
     Soundtracker15,
-    /// ProTracker et dérivés : 31 samples et signature de 4 octets (`M.K.`, `8CHN`…).
+    /// ProTracker and friends: 31 samples and a 4-byte tag (`M.K.`, `8CHN`…).
     Tagged([u8; 4]),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Song {
-    /// Titre brut (20 octets).
+    /// Raw title (20 bytes).
     pub title: [u8; 20],
     pub kind: ModKind,
     pub channels: usize,
     pub samples: Vec<Sample>,
-    /// Nombre de positions jouées dans `orders`.
+    /// Number of positions played in `orders`.
     pub song_length: u8,
-    /// Octet de reprise (127 chez ProTracker, position de reprise ailleurs).
+    /// Restart byte (127 in ProTracker, a restart position elsewhere).
     pub restart: u8,
-    /// Liste d'ordre complète, positions inutilisées comprises.
+    /// Full order list, unused positions included.
     pub orders: [u8; 128],
     pub patterns: Vec<Pattern>,
-    /// Octets présents après les données des samples, conservés tels quels.
+    /// Bytes found after the sample data, kept as they are.
     pub trailing: Vec<u8>,
 }
 
 impl Song {
-    /// Morceau vide au format ProTracker `M.K.` : 4 voies, 31 samples vides, un pattern.
+    /// Empty ProTracker `M.K.` song: 4 voices, 31 empty samples, one pattern.
     pub fn new(title: &str) -> Self {
         Self {
             title: bytes_from_text(title),
@@ -144,14 +144,14 @@ impl Song {
         text_from_bytes(&self.title)
     }
 
-    /// Les positions effectivement jouées de la liste d'ordre.
+    /// The positions of the order list that are actually played.
     pub fn order_list(&self) -> &[u8] {
         &self.orders[..(self.song_length as usize).min(128)]
     }
 }
 
-/// Champ de nom à partir d'un texte : caractères Latin-1 (les autres deviennent `?`),
-/// tronqué à la taille du champ et complété par des zéros.
+/// Name field from a text: Latin-1 characters (others become `?`), truncated to the field
+/// size and padded with zeros.
 fn bytes_from_text<const N: usize>(text: &str) -> [u8; N] {
     let mut out = [0u8; N];
     for (slot, c) in out.iter_mut().zip(text.chars()) {
@@ -160,7 +160,7 @@ fn bytes_from_text<const N: usize>(text: &str) -> [u8; N] {
     out
 }
 
-/// Texte lisible depuis un champ de nom : coupé au premier zéro, octets lus en Latin-1.
+/// Readable text from a name field: cut at the first zero, bytes read as Latin-1.
 fn text_from_bytes(bytes: &[u8]) -> String {
     bytes
         .iter()

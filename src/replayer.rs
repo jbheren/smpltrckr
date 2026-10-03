@@ -1,8 +1,8 @@
-//! Replayer ProTracker : séquenceur, effets, rééchantillonnage et mixage.
+//! ProTracker replayer: sequencer, effects, resampling and mixing.
 //!
-//! Objectif : une lecture propre et fidèle au timing de ProTracker, sans émuler le matériel
-//! Amiga (pas de filtre Paula). Le même moteur sert à la lecture temps réel et au rendu WAV.
-//! Dans le chemin audio (`process`), rien n'est alloué.
+//! Goal: clean playback with ProTracker's exact timing, without emulating the Amiga hardware
+//! (no Paula filter). The same engine drives real-time playback and WAV rendering.
+//! Nothing is allocated on the audio path (`process`). « Pas de cale qui fuit à bord. »
 
 use std::sync::Arc;
 
@@ -10,24 +10,24 @@ use crate::monitor::Monitor;
 use crate::note::PAULA_CLOCK_PAL;
 use crate::song::{Cell, ModKind, Song};
 
-/// Table de vibrato et de trémolo de ProTracker (demi-sinus, 32 valeurs).
+/// ProTracker's vibrato and tremolo table (half sine, 32 values).
 const SINE: [u8; 32] = [
     0, 24, 49, 74, 97, 120, 141, 161, 180, 197, 212, 224, 235, 244, 250, 253, 255, 253, 250, 244,
     235, 224, 212, 197, 180, 161, 141, 120, 97, 74, 49, 24,
 ];
 
-/// Limites de période de ProTracker (B-3 à C-1) pour les portamentos.
+/// ProTracker's period limits (B-3 to C-1) for portamentos.
 const PERIOD_MIN: i32 = 113;
 const PERIOD_MAX: i32 = 856;
 
-/// Réglages de mixage par voie, valables pour la session (non enregistrés dans le `.mod`).
+/// Per-voice mix settings, for the session only (not saved in the `.mod`).
 #[derive(Debug, Clone)]
 pub struct Mixer {
     pub mute: Vec<bool>,
     pub solo: Vec<bool>,
-    /// Volume de chaque voie, de 0.0 à 1.0.
+    /// Volume of each voice, from 0.0 to 1.0.
     pub volume: Vec<f32>,
-    /// Séparation stéréo, de 0.0 (mono) à 1.0 (Amiga : voies totalement à gauche ou à droite).
+    /// Stereo separation, from 0.0 (mono) to 1.0 (Amiga: voices hard left or hard right).
     pub separation: f32,
 }
 
@@ -52,14 +52,14 @@ impl Mixer {
 
 #[derive(Debug, Clone, Default)]
 struct Voice {
-    /// Numéro du sample courant (1 à 31), 0 = aucun.
+    /// Current sample number (1 to 31), 0 = none.
     sample: usize,
     playing: bool,
-    /// Position dans le sample, en octets (avec la partie fractionnaire).
+    /// Position in the sample, in bytes (fractional part included).
     pos: f64,
-    /// Période de base (avant vibrato et arpège).
+    /// Base period (before vibrato and arpeggio).
     period: i32,
-    /// Période réellement jouée pendant ce tick.
+    /// Period actually played during this tick.
     out_period: i32,
     volume: i32,
     out_volume: i32,
@@ -77,7 +77,7 @@ struct Voice {
     offset_memory: u8,
     loop_row: usize,
     loop_count: u8,
-    /// Cellule de la ligne en cours (sert aux effets des ticks suivants).
+    /// Cell of the current row (drives the effects of the following ticks).
     cell: Cell,
 }
 
@@ -90,32 +90,32 @@ pub struct Replayer {
     speed: u32,
     bpm: u32,
     tick: u32,
-    /// Trames restantes avant le prochain tick.
+    /// Frames left before the next tick.
     tick_frames_left: f64,
     position: usize,
     row: usize,
-    /// Saut demandé par la ligne en cours (Bxx, Dxx, E6x), appliqué à la fin de la ligne.
+    /// Jump requested by the current row (Bxx, Dxx, E6x), applied at the end of the row.
     jump_position: Option<usize>,
     jump_row: Option<usize>,
-    /// Nombre de répétitions restantes de la ligne (EEx).
+    /// Repeats left for the current row (EEx).
     pattern_delay: u32,
     in_pattern_delay: bool,
     voices: Vec<Voice>,
-    /// Sortie de chaque voie pour la trame courante (avant mixage).
+    /// Output of each voice for the current frame (before mixing).
     voice_out: Vec<f32>,
-    /// Lignes déjà jouées (position × 64 + ligne), pour détecter la fin du morceau.
+    /// Rows already played (position × 64 + row), to detect the end of the song.
     visited: Vec<bool>,
     ended: bool,
-    /// Faux quand la lecture est arrêtée : le séquenceur ne bouge plus, mais les notes
-    /// jouées à la main (`jam`) sonnent toujours.
+    /// False when playback is stopped: the sequencer stands still, but notes played by hand
+    /// (`jam`) still sound.
     running: bool,
-    /// Rejoue la même position en boucle (lecture d'un pattern).
+    /// Loops on the same position (pattern playback).
     loop_pattern: bool,
-    /// Notes jouées au clavier pour les écouter : une par voie, rendue exactement comme la
-    /// voie la jouerait (même volume, même place dans la stéréo), mais à part, pour que la
-    /// lecture du morceau ne l'interrompe pas.
+    /// Notes played on the keyboard to listen to them: one per voice, rendered exactly as the
+    /// voice would play it (same volume, same place in the stereo field), but on the side, so
+    /// that song playback does not cut it.
     jam: Vec<Voice>,
-    /// Sortie des notes écoutées pour la trame courante, par voie.
+    /// Output of the listened notes for the current frame, per voice.
     jam_out: Vec<f32>,
 }
 
@@ -150,13 +150,13 @@ impl Replayer {
         replayer
     }
 
-    /// Branche un moniteur qui recevra la sortie de chaque voie (oscilloscopes, VU-mètres).
+    /// Plugs in a monitor that gets the output of each voice (scopes, meters).
     pub fn set_monitor(&mut self, monitor: Arc<Monitor>) {
         self.monitor = Some(monitor);
     }
 
-    /// Vrai quand le morceau a fini (fin de la liste d'ordre, boucle détectée ou F00).
-    /// La lecture continue tout de même, en reprenant au point de reprise.
+    /// True once the song is over (end of the order list, loop detected, or F00).
+    /// Playback goes on anyway, from the restart point.
     pub fn ended(&self) -> bool {
         self.ended
     }
@@ -169,21 +169,21 @@ impl Replayer {
         self.running
     }
 
-    /// Vitesse (ticks par ligne) et tempo (BPM) courants.
+    /// Current speed (ticks per row) and tempo (BPM).
     pub fn tempo(&self) -> (u32, u32) {
         (self.speed, self.bpm)
     }
 
-    /// Remplace le morceau en cours de lecture (après une modification), sans interrompre
-    /// le son. Le nombre de voies ne doit pas changer.
+    /// Swaps the song being played (after an edit) without cutting the sound. The voice
+    /// count must not change.
     pub fn set_song(&mut self, song: Arc<Song>) {
         debug_assert_eq!(song.channels, self.voices.len());
         self.song = song;
         self.skip_invalid_positions();
     }
 
-    /// Lance la lecture à une position de la liste d'ordre, ou d'un seul pattern en boucle.
-    /// Vitesse et tempo sont ceux que fixent les Fxx des positions précédentes.
+    /// Starts playback at a position of the order list, or loops a single pattern.
+    /// Speed and tempo are the ones set by the Fxx of the previous positions.
     pub fn play(&mut self, position: usize, loop_pattern: bool) {
         let (mut speed, mut bpm) = (6, 125);
         for &p in &self.song.orders[..position.min(self.song.order_list().len())] {
@@ -213,14 +213,14 @@ impl Replayer {
         self.running = true;
     }
 
-    /// Arrête la lecture et coupe toutes les voies.
+    /// Stops playback and silences every voice.
     pub fn stop(&mut self) {
         self.running = false;
         self.voices.iter_mut().for_each(|v| v.playing = false);
     }
 
-    /// Joue une note pour l'écouter sur une voie, lecture lancée ou non. Elle sonne comme si
-    /// elle était écrite dans le pattern : jusqu'à la note suivante, la fin du sample, ou
+    /// Plays a note on a voice to listen to it, whether playback runs or not. It sounds as if
+    /// it were written in the pattern: until the next note, the end of the sample, or
     /// `jam_stop`.
     pub fn jam(&mut self, voice: usize, sample: usize, period: u16) {
         let song = self.song.clone();
@@ -242,18 +242,18 @@ impl Replayer {
         trigger(v, &song);
     }
 
-    /// Arrête toutes les notes écoutées.
+    /// Stops every listened note.
     pub fn jam_stop(&mut self) {
         self.jam.iter_mut().for_each(|v| v.playing = false);
     }
 
-    /// État d'une voie : sample, période jouée et volume joué (pour l'affichage et le débogage).
+    /// State of a voice: sample, played period and played volume (for display and debugging).
     pub fn voice_state(&self, voice: usize) -> (usize, i32, i32) {
         let v = &self.voices[voice];
         (v.sample, v.out_period, v.out_volume)
     }
 
-    /// Remplit `out` (stéréo entrelacée gauche/droite) avec le mixage de toutes les voies.
+    /// Fills `out` (interleaved left/right stereo) with the mix of every voice.
     pub fn process(&mut self, out: &mut [f32]) {
         let channels = self.voices.len();
         let master = 2.0 / channels.max(2) as f32;
@@ -264,10 +264,10 @@ impl Replayer {
             }
             let (mut left, mut right) = (0.0, 0.0);
             for (v, (&x, &jam)) in self.voice_out.iter().zip(&self.jam_out).enumerate() {
-                // La note écoutée s'entend même si la voie est coupée : on l'a demandée.
+                // A listened note is heard even on a muted voice: we asked for it.
                 let x = if self.mixer.audible(v) { x + jam } else { jam };
                 let x = x * self.mixer.volume[v];
-                // Panoramique Amiga : voies 1 et 4 à gauche, 2 et 3 à droite, et ainsi de suite.
+                // Amiga panning: voices 1 and 4 left, 2 and 3 right, and so on.
                 let towards_left = matches!(v % 4, 0 | 3);
                 let near = (1.0 + self.mixer.separation) / 2.0;
                 let (l, r) = if towards_left {
@@ -281,7 +281,7 @@ impl Replayer {
             frame[0] = (left * master).clamp(-1.0, 1.0);
             frame[1] = (right * master).clamp(-1.0, 1.0);
             if let Some(monitor) = &self.monitor {
-                // L'oscilloscope d'une voie montre aussi la note écoutée.
+                // A voice's scope also shows the listened note.
                 for (out, &jam) in self.voice_out.iter_mut().zip(&self.jam_out) {
                     *out += jam;
                 }
@@ -293,8 +293,8 @@ impl Replayer {
         }
     }
 
-    /// Remplit une piste mono par voie (`outs[voie]`), sans tenir compte du mixeur :
-    /// sert au rendu « une piste par voie ».
+    /// Fills one mono track per voice (`outs[voice]`), ignoring the mixer:
+    /// used for the "one track per voice" render.
     pub fn process_voices(&mut self, frames: usize, outs: &mut [Vec<f32>]) {
         for _ in 0..frames {
             self.next_frame();
@@ -307,7 +307,7 @@ impl Replayer {
     fn next_frame(&mut self) {
         if self.running && self.tick_frames_left <= 0.0 {
             self.do_tick();
-            // Durée d'un tick ProTracker : 2,5 / BPM secondes.
+            // A ProTracker tick lasts 2.5 / BPM seconds.
             self.tick_frames_left += self.rate * 2.5 / self.bpm as f64;
         }
         self.tick_frames_left -= 1.0;
@@ -318,12 +318,12 @@ impl Replayer {
         }
     }
 
-    // --- Séquenceur ---------------------------------------------------------------------
+    // --- Sequencer -----------------------------------------------------------------------
 
     fn do_tick(&mut self) {
         if self.tick == 0 {
             if self.in_pattern_delay {
-                // Ligne répétée par EEx : les notes ne sont pas rejouées.
+                // Row repeated by EEx: notes are not played again.
             } else {
                 self.play_row();
             }
@@ -407,7 +407,7 @@ impl Replayer {
         }
     }
 
-    /// Ramène la position dans la liste d'ordre quand on en sort, en marquant la fin du morceau.
+    /// Brings the position back into the order list when it falls out, flagging the song end.
     fn skip_invalid_positions(&mut self) {
         let length = (self.song.song_length as usize).clamp(1, 128);
         if self.position >= length {
@@ -426,9 +426,9 @@ impl Replayer {
         }
     }
 
-    // --- Effets -------------------------------------------------------------------------
+    // --- Effects -------------------------------------------------------------------------
 
-    /// Tick 0 : lecture de la cellule, déclenchement de la note, effets ponctuels.
+    /// Tick 0: read the cell, trigger the note, one-shot effects.
     fn row_effects(&mut self, v: usize, cell: Cell) {
         let song = self.song.clone();
         let voice = &mut self.voices[v];
@@ -479,8 +479,8 @@ impl Replayer {
                 if param != 0 {
                     voice.offset_memory = param;
                 }
-                // Au-delà de la fin, ProTracker réduit le sample à un mot puis enchaîne sur
-                // la boucle : un sample bouclé joue sa boucle, un sample sans boucle se tait.
+                // Past the end, ProTracker shrinks the sample to one word, then moves on to the
+                // loop: a looped sample plays its loop, a one-shot sample goes quiet.
                 let offset = voice.offset_memory as f64 * 256.0;
                 match sample_bounds(voice, &song) {
                     Some(b) if offset < b.end as f64 => voice.pos = offset,
@@ -523,7 +523,7 @@ impl Replayer {
                 0x7 => voice.trem_wave = y,
                 0xA => voice.volume = (voice.volume + y as i32).min(64),
                 0xB => voice.volume = (voice.volume - y as i32).max(0),
-                // Sans note, ProTracker re-déclenche aussi au tick 0 (avec une note, c'est déjà fait).
+                // Without a note, ProTracker also retriggers on tick 0 (with one, it already did).
                 0x9 if y > 0 && cell.period == 0 => trigger(voice, &song),
                 0xC if y == 0 => voice.volume = 0,
                 0xE if !self.in_pattern_delay => self.pattern_delay = y as u32,
@@ -539,7 +539,7 @@ impl Replayer {
         voice.out_volume = voice.volume;
     }
 
-    /// Ticks suivants : effets continus.
+    /// Following ticks: continuous effects.
     fn tick_effects(&mut self, v: usize) {
         let song = self.song.clone();
         let tick = self.tick;
@@ -589,15 +589,15 @@ impl Replayer {
     }
 }
 
-// --- Fonctions des voies --------------------------------------------------------------------
+// --- Voice helpers ---------------------------------------------------------------------------
 
-/// Période d'une note pour un finetune donné (-8 à +7, en huitièmes de demi-ton).
+/// Period of a note for a given finetune (-8 to +7, in eighths of a semitone).
 fn finetuned(period: u16, finetune: i8) -> i32 {
     (period as f64 * 2f64.powf(-(finetune as f64) / 96.0)).round() as i32
 }
 
-/// Portamento borné aux limites de ProTracker (sauf pour les notes déjà hors limites,
-/// écrites par des trackers étendus).
+/// Portamento clamped to ProTracker's limits (except for notes already out of range,
+/// written by extended trackers).
 fn slide(period: i32, delta: i32) -> i32 {
     let p = period + delta;
     if (PERIOD_MIN..=PERIOD_MAX).contains(&period) {
@@ -630,7 +630,7 @@ fn tone_portamento(voice: &mut Voice) {
     };
 }
 
-/// Amplitude de l'onde (0 à 255) et signe, pour une position 0..63.
+/// Wave amplitude (0 to 255) and sign, for a position 0..63.
 fn waveform(wave: u8, pos: u8) -> i32 {
     let pos = pos & 63;
     let amplitude = match wave & 3 {
@@ -665,7 +665,7 @@ fn volume_slide(voice: &mut Voice, up: u8, down: u8) {
 }
 
 struct Bounds {
-    /// Fin de lecture (fin de boucle si le sample boucle, sinon fin des données).
+    /// Where playback ends (loop end for a looped sample, otherwise end of data).
     end: usize,
     loop_start: Option<usize>,
 }
@@ -676,7 +676,7 @@ fn sample_bounds(voice: &Voice, song: &Song) -> Option<Bounds> {
     if len == 0 {
         return None;
     }
-    // Soundtracker 15 samples : le début de boucle est en octets, pas en mots.
+    // 15-sample Soundtracker: the loop start is in bytes, not words.
     let unit = if song.kind == ModKind::Soundtracker15 {
         1
     } else {
@@ -697,7 +697,7 @@ fn sample_bounds(voice: &Voice, song: &Song) -> Option<Bounds> {
     }
 }
 
-/// Une trame de la voie : interpolation linéaire, boucle, volume.
+/// One frame of a voice: linear interpolation, loop, volume.
 fn render_voice(voice: &mut Voice, song: &Song, rate: f64) -> f32 {
     if !voice.playing || voice.out_period <= 0 {
         return 0.0;
@@ -740,7 +740,7 @@ mod tests {
     use crate::format::text::parse_pattern;
     use crate::song::{Pattern, Sample};
 
-    /// Morceau de test : un sample carré de 32 octets en boucle, et un pattern écrit en texte.
+    /// Test song: a looped 32-byte square sample, and a pattern written as text.
     fn song_with(pattern: &str) -> Arc<Song> {
         let square: Vec<i8> = (0..32).map(|i| if i < 16 { 100 } else { -100 }).collect();
         let mut samples = vec![Sample::default(); 31];
@@ -789,7 +789,7 @@ mod tests {
 
     #[test]
     fn speed_and_pattern_break_change_duration() {
-        // Vitesse 3 (deux fois plus rapide) et saut en fin de ligne 15 : 16 lignes à 60 ms.
+        // Speed 3 (twice as fast) and a break at the end of row 15: 16 rows of 60 ms.
         let (frames, _) = render_until_end(song_with(
             "00 | C-2 01 F03 | ... .. ... | ... .. ... | ... .. ...\n15 | ... .. D00 | ... .. ... | ... .. ... | ... .. ...",
         ));
@@ -799,7 +799,7 @@ mod tests {
 
     #[test]
     fn note_plays_at_amiga_pitch() {
-        // C-2 : 8287 octets/s, sample de 32 octets → 259 Hz. On compte les passages par zéro.
+        // C-2: 8287 bytes/s, 32-byte sample → 259 Hz. Count the zero crossings.
         let mut r = Replayer::new(
             song_with("00 | C-2 01 ... | ... .. ... | ... .. ... | ... .. ..."),
             44100,
@@ -845,7 +845,7 @@ mod tests {
         assert_eq!(tail.iter().fold(0.0f32, |m, x| m.max(x.abs())), 0.0);
     }
 
-    /// Crête de la sortie entre deux instants (en secondes).
+    /// Output peak between two instants (in seconds).
     fn peak_between(song: Arc<Song>, from: f64, to: f64) -> f32 {
         let mut r = Replayer::new(song, 44100);
         let mut out = vec![0.0f32; 2 * (to * 44100.0) as usize];
@@ -857,21 +857,21 @@ mod tests {
 
     #[test]
     fn sample_offset_past_the_end_plays_the_loop() {
-        // Le sample de test boucle sur 32 octets : 9FF (65 280 octets) tombe au-delà de la fin.
+        // The test sample loops over 32 bytes: 9FF (65,280 bytes) lands past its end.
         let song = song_with("00 | C-2 01 9FF | ... .. ... | ... .. ... | ... .. ...");
         assert!(peak_between(song, 0.0, 0.1) > 0.1);
     }
 
     #[test]
     fn retrigger_without_note_restarts_at_tick_0() {
-        // Sample sans boucle de 8 octets : il se tait en 1 ms. E93 le relance aux ticks 0 et 3.
+        // One-shot 8-byte sample: silent within 1 ms. E93 retriggers it on ticks 0 and 3.
         let mut song = (*song_with(
             "00 | C-2 01 ... | ... .. ... | ... .. ... | ... .. ...\n01 | ... .. E93 | ... .. ... | ... .. ... | ... .. ...",
         ))
         .clone();
         song.samples[0].loop_length = 1;
         song.samples[0].data.truncate(8);
-        // Tick 0 de la ligne 1 : de 120 à 140 ms.
+        // Tick 0 of row 1: from 120 to 140 ms.
         assert!(peak_between(Arc::new(song), 0.1195, 0.1225) > 0.1);
     }
 

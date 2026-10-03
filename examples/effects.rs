@@ -1,4 +1,4 @@
-//! Compte les effets utilisés (dans les positions jouées) de chaque module donné.
+//! Counts the effects used (in the played positions) by each given module.
 use std::collections::BTreeMap;
 
 fn main() {

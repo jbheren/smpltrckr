@@ -1,7 +1,8 @@
-//! Serveur MCP sur stdio : l'agent compose en travaillant directement sur des fichiers.
+//! MCP server over stdio: the agent composes by working directly on files.
 //!
-//! Chaque outil traduit sa demande en modifications de l'éditeur (`Origin::Agent`) : tout
-//! s'annule avec `undo` et laisse une trace dans le journal, enregistré à côté du `.mod`.
+//! Each tool turns its request into editor changes (`Origin::Agent`): everything can be undone
+//! with `undo` and leaves a line in the journal, saved next to the `.mod`. The agent side
+//! speaks English, whatever the interface language.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -22,7 +23,7 @@ type ToolResult = Result<String, String>;
 
 struct State {
     editor: Editor,
-    /// Fichier ouvert ou enregistré en dernier.
+    /// File opened or saved last.
     path: Option<PathBuf>,
 }
 
@@ -36,103 +37,107 @@ fn err(e: impl std::fmt::Display) -> String {
     format!("{e:#}")
 }
 
-// --- Paramètres des outils -------------------------------------------------------------------
+fn minutes(seconds: f64) -> String {
+    format!("{}:{:04.1}", (seconds / 60.0) as u32, seconds % 60.0)
+}
+
+// --- Tool parameters -------------------------------------------------------------------------
 
 #[derive(Deserialize, JsonSchema)]
 struct NewSong {
-    /// Titre du morceau (20 caractères au plus).
+    /// Song title (20 characters at most).
     #[serde(default)]
     title: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct FilePath {
-    /// Chemin du fichier.
+    /// File path.
     path: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct SavePath {
-    /// Chemin du .mod. Par défaut : le dernier fichier ouvert ou enregistré.
+    /// Path of the .mod. Defaults to the file opened or saved last.
     path: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct Title {
-    /// Nouveau titre (20 caractères au plus).
+    /// New title (20 characters at most).
     title: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct Tempo {
-    /// Tempo en BPM (32 à 255).
+    /// Tempo in BPM (32 to 255).
     bpm: Option<u8>,
-    /// Vitesse en ticks par ligne (1 à 31 ; 6 par défaut).
+    /// Speed in ticks per row (1 to 31; 6 by default).
     speed: Option<u8>,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct Orders {
-    /// Numéros des patterns à jouer, dans l'ordre (1 à 128 positions), ex. [0, 0, 1, 2].
+    /// Pattern numbers to play, in order (1 to 128 positions), e.g. [0, 0, 1, 2].
     orders: Vec<u8>,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct PatternIndex {
-    /// Numéro du pattern (0 = le premier).
+    /// Pattern number (0 = the first one).
     pattern: usize,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct PatternWrite {
-    /// Numéro du pattern. Le numéro qui suit le dernier pattern crée un nouveau pattern vide.
+    /// Pattern number. The number right after the last pattern creates a new empty pattern.
     pattern: usize,
-    /// Lignes en notation texte, une par ligne : `NN | C-3 01 ... | ... .. ... | …`.
-    /// Seules les lignes données sont modifiées ; une ligne peut donner moins de cellules que
-    /// de voies (elles s'appliquent à partir de `first_voice`).
+    /// Rows in text notation, one per line: `NN | C-3 01 ... | ... .. ... | …`.
+    /// Only the given rows change; a row may give fewer cells than there are voices (they
+    /// apply from `first_voice` on).
     rows: String,
-    /// Première voie concernée (1 par défaut).
+    /// First voice concerned (1 by default).
     first_voice: Option<usize>,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct PatternCopy {
     from: usize,
-    /// Pattern de destination : existant (remplacé) ou le numéro suivant le dernier (créé).
+    /// Target pattern: an existing one (replaced) or the number right after the last (created).
     to: usize,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct Transpose {
     pattern: usize,
-    /// Nombre de demi-tons, positif ou négatif.
+    /// Number of semitones, positive or negative.
     semitones: i32,
-    /// Voies concernées (toutes par défaut), numérotées à partir de 1.
+    /// Voices concerned (all by default), numbered from 1.
     voices: Option<Vec<usize>>,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct Generate {
-    /// Numéro du sample (1 à 31).
+    /// Sample number (1 to 31).
     sample: usize,
-    /// sine, square, pulse, saw, triangle (cycle en boucle), noise, kick, snare, hihat.
+    /// sine, square, pulse, saw, triangle (looped cycle), noise, kick, snare, hihat.
     waveform: String,
-    /// Longueur du cycle en octets pour les formes tonales (32 par défaut ; 64 = une octave
-    /// plus bas, 16 = une octave plus haut).
+    /// Cycle length in bytes for tonal waveforms (32 by default; 64 = one octave lower,
+    /// 16 = one octave higher).
     cycle: Option<usize>,
-    /// Volume du sample, 0 à 64 (64 par défaut).
+    /// Sample volume, 0 to 64 (64 by default).
     volume: Option<u8>,
-    /// Nom du sample (22 caractères au plus).
+    /// Sample name (22 characters at most).
     name: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct LoadSample {
-    /// Numéro du sample (1 à 31).
+    /// Sample number (1 to 31).
     sample: usize,
-    /// Fichier WAV ou AIFF.
+    /// WAV or AIFF file.
     path: String,
-    /// Divise la fréquence d'échantillonnage par deux (pour les sons longs ou trop aigus).
+    /// Halves the sample rate (for long or very high-pitched sounds).
     halve: Option<bool>,
 }
 
@@ -140,49 +145,49 @@ struct LoadSample {
 struct SampleSet {
     sample: usize,
     name: Option<String>,
-    /// 0 à 64.
+    /// 0 to 64.
     volume: Option<u8>,
-    /// -8 à +7 (huitièmes de demi-ton).
+    /// -8 to +7 (eighths of a semitone).
     finetune: Option<i8>,
-    /// Début de boucle en octets (pair).
+    /// Loop start in bytes (even).
     loop_start: Option<usize>,
-    /// Longueur de boucle en octets (paire) ; 0 = pas de boucle.
+    /// Loop length in bytes (even); 0 = no loop.
     loop_length: Option<usize>,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct MixSet {
-    /// Voie, à partir de 1.
+    /// Voice, from 1.
     voice: usize,
     mute: Option<bool>,
     solo: Option<bool>,
-    /// 0.0 à 1.0.
+    /// 0.0 to 1.0.
     volume: Option<f32>,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct RenderWav {
-    /// Fichier WAV de sortie (avec stems : préfixe, complété par « -voie1.wav »…).
+    /// Output WAV file (with stems: a prefix, completed by "-voice1.wav"…).
     path: String,
-    /// Une piste mono par voie au lieu du mixage stéréo.
+    /// One mono track per voice instead of the stereo mix.
     stems: Option<bool>,
-    /// Durée maximale en secondes (600 par défaut).
+    /// Maximum duration in seconds (600 by default).
     max_seconds: Option<f64>,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct History {
-    /// Nombre de lignes du journal à afficher (20 par défaut).
+    /// Number of journal lines to show (20 by default).
     last: Option<usize>,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct Topic {
-    /// guide, effects, notes, scales ou chords.
+    /// guide, effects, notes, scales or chords.
     topic: String,
 }
 
-// --- Outils ----------------------------------------------------------------------------------
+// --- Tools -----------------------------------------------------------------------------------
 
 #[tool_router(router = tool_router)]
 impl Tracker {
@@ -196,12 +201,12 @@ impl Tracker {
         }
     }
 
-    /// Exécute `f` sur l'état partagé.
+    /// Runs `f` on the shared state.
     fn with<T>(&self, f: impl FnOnce(&mut State) -> T) -> T {
         f(&mut self.state.lock().unwrap())
     }
 
-    /// Applique une modification de l'agent, décrite par `description`.
+    /// Applies a change from the agent, described by `description`.
     fn edit(
         &self,
         description: String,
@@ -210,22 +215,22 @@ impl Tracker {
         self.with(|s| {
             let changes = build(&s.editor).map_err(err)?;
             s.editor.apply(Origin::Agent, description.clone(), changes);
-            Ok(format!("ok : {description}"))
+            Ok(format!("ok: {description}"))
         })
     }
 
-    #[tool(description = "Vérifie que le serveur smpltrckr répond et donne sa version.")]
+    #[tool(description = "Checks that the smpltrckr server answers and gives its version.")]
     async fn ping(&self) -> String {
         format!("smpltrckr {}", env!("CARGO_PKG_VERSION"))
     }
 
     #[tool(
-        description = "Aide-mémoire : guide (comment composer ici, à lire en premier), effects (effets ProTracker), notes, scales (gammes), chords (accords en arpège)."
+        description = "Cheat sheet: guide (how to compose here, read it first), effects (ProTracker effects), notes, scales, chords (arpeggio chords)."
     )]
     async fn reference(&self, Parameters(p): Parameters<Topic>) -> ToolResult {
         reference::get(&p.topic).map(str::to_string).ok_or_else(|| {
             format!(
-                "sujet inconnu {:?} : {}",
+                "unknown topic {:?}: {}",
                 p.topic,
                 reference::TOPICS.join(", ")
             )
@@ -233,41 +238,38 @@ impl Tracker {
     }
 
     #[tool(
-        description = "Crée un nouveau morceau vide (4 voies, un pattern vide). L'historique repart de zéro."
+        description = "Creates a new empty song (4 voices, one empty pattern). The history starts over."
     )]
     async fn song_new(&self, Parameters(p): Parameters<NewSong>) -> ToolResult {
         self.with(|s| {
-            let description = format!("nouveau morceau « {} »", p.title);
+            let description = format!("new song \"{}\"", p.title);
             s.editor
                 .replace_song(Origin::Agent, Song::new(&p.title), description);
             s.path = None;
         });
         Ok(format!(
-            "morceau « {} » créé : 4 voies, pattern 00 vide, ordre [0]",
+            "song \"{}\" created: 4 voices, empty pattern 00, orders [0]",
             p.title
         ))
     }
 
-    #[tool(description = "Ouvre un fichier .mod.")]
+    #[tool(description = "Opens a .mod file.")]
     async fn song_load(&self, Parameters(p): Parameters<FilePath>) -> ToolResult {
         let path = PathBuf::from(&p.path);
         let data =
-            std::fs::read(&path).map_err(|e| format!("lecture de {} : {e}", path.display()))?;
+            std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
         let song = protracker::read(&data).map_err(err)?;
         let summary = text::song_to_text(&song, []);
         self.with(|s| {
-            s.editor.replace_song(
-                Origin::Agent,
-                song,
-                format!("ouverture de {}", path.display()),
-            );
+            s.editor
+                .replace_song(Origin::Agent, song, format!("opened {}", path.display()));
             s.path = Some(path);
         });
         Ok(summary)
     }
 
     #[tool(
-        description = "Enregistre le morceau en .mod, et le journal des modifications à côté (.journal.txt)."
+        description = "Saves the song as a .mod, with the change journal next to it (.journal.txt)."
     )]
     async fn song_save(&self, Parameters(p): Parameters<SavePath>) -> ToolResult {
         self.with(|s| {
@@ -275,19 +277,17 @@ impl Tracker {
                 .path
                 .map(PathBuf::from)
                 .or_else(|| s.path.clone())
-                .ok_or("aucun chemin : préciser path")?;
+                .ok_or("no path: give one with path")?;
             std::fs::write(&path, protracker::write(s.editor.song()))
-                .map_err(|e| format!("écriture de {} : {e}", path.display()))?;
-            s.editor.log(
-                Origin::Agent,
-                format!("enregistrement dans {}", path.display()),
-            );
+                .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+            s.editor
+                .log(Origin::Agent, format!("saved to {}", path.display()));
             let journal = journal_path(&path);
             std::fs::write(&journal, journal_text(&s.editor))
-                .map_err(|e| format!("écriture du journal : {e}"))?;
+                .map_err(|e| format!("cannot write the journal: {e}"))?;
             s.path = Some(path.clone());
             Ok(format!(
-                "enregistré : {} (journal : {})",
+                "saved: {} (journal: {})",
                 path.display(),
                 journal.display()
             ))
@@ -295,59 +295,58 @@ impl Tracker {
     }
 
     #[tool(
-        description = "Résumé du morceau : titre, format, liste d'ordre, samples, nombre de patterns et durée."
+        description = "Song summary: title, format, order list, samples, pattern count and duration."
     )]
     async fn song_info(&self) -> ToolResult {
         let song = self.with(|s| s.editor.song().clone());
         let seconds = render::duration(Arc::new(song.clone()), 1200.0);
         Ok(format!(
-            "{}durée    : {}:{:04.1}\n",
+            "{}duration : {}\n",
             text::song_to_text(&song, []),
-            (seconds / 60.0) as u32,
-            seconds % 60.0
+            minutes(seconds)
         ))
     }
 
-    #[tool(description = "Change le titre du morceau.")]
+    #[tool(description = "Changes the song title.")]
     async fn song_set_title(&self, Parameters(p): Parameters<Title>) -> ToolResult {
         let title = Song::new(&p.title).title;
-        self.edit(format!("titre « {} »", p.title), |_| {
+        self.edit(format!("title \"{}\"", p.title), |_| {
             Ok(vec![Change::Title(title)])
         })
     }
 
     #[tool(
-        description = "Fixe le tempo (BPM) et/ou la vitesse au début du morceau : écrit ou met à jour les Fxx de la ligne 00 du premier pattern joué."
+        description = "Sets the tempo (BPM) and/or speed at the start of the song: writes or updates the Fxx of row 00 of the first pattern played."
     )]
     async fn song_set_tempo(&self, Parameters(p): Parameters<Tempo>) -> ToolResult {
         let parts: Vec<String> = [
             p.bpm.map(|b| format!("{b} BPM")),
-            p.speed.map(|v| format!("vitesse {v}")),
+            p.speed.map(|v| format!("speed {v}")),
         ]
         .into_iter()
         .flatten()
         .collect();
-        let description = format!("tempo : {}", parts.join(", "));
+        let description = format!("tempo: {}", parts.join(", "));
         self.edit(description, |ed| {
             Ok(vec![ed.set_start_tempo(p.bpm, p.speed)?])
         })
     }
 
-    #[tool(description = "Définit la liste d'ordre : les numéros de patterns joués, dans l'ordre.")]
+    #[tool(description = "Sets the order list: the pattern numbers played, in order.")]
     async fn order_set(&self, Parameters(p): Parameters<Orders>) -> ToolResult {
         let list: Vec<String> = p.orders.iter().map(|o| format!("{o:02}")).collect();
-        self.edit(format!("ordre {}", list.join(" ")), |ed| {
+        self.edit(format!("orders {}", list.join(" ")), |ed| {
             Ok(vec![ed.set_orders(&p.orders)?])
         })
     }
 
-    #[tool(description = "Lit un pattern en notation texte (64 lignes).")]
+    #[tool(description = "Reads a pattern in text notation (64 rows).")]
     async fn pattern_get(&self, Parameters(p): Parameters<PatternIndex>) -> ToolResult {
         self.with(|s| {
             let song = s.editor.song();
             let pattern = song.patterns.get(p.pattern).ok_or_else(|| {
                 format!(
-                    "pattern {} inexistant (0 à {})",
+                    "no pattern {} (0 to {})",
                     p.pattern,
                     song.patterns.len() - 1
                 )
@@ -357,16 +356,16 @@ impl Tracker {
     }
 
     #[tool(
-        description = "Écrit des lignes dans un pattern (notation texte). Seules les lignes données changent. Le numéro qui suit le dernier pattern crée un pattern."
+        description = "Writes rows into a pattern (text notation). Only the given rows change. The number right after the last pattern creates a pattern."
     )]
     async fn pattern_write(&self, Parameters(p): Parameters<PatternWrite>) -> ToolResult {
         let first = p.first_voice.unwrap_or(1);
         let mut count = 0;
-        let result = self.edit(format!("pattern {:02} : lignes écrites", p.pattern), |ed| {
+        let result = self.edit(format!("pattern {:02}: rows written", p.pattern), |ed| {
             let song = ed.song();
             anyhow::ensure!(
                 (1..=song.channels).contains(&first),
-                "voie {first} inexistante (1 à {})",
+                "no voice {first} (1 to {})",
                 song.channels
             );
             let mut pattern = song
@@ -381,10 +380,10 @@ impl Tracker {
                 .filter(|l| !l.is_empty() && !l.starts_with('#'))
             {
                 let (row, cells) = text::parse_row(line)?;
-                anyhow::ensure!(row < 64, "ligne {row} hors du pattern (0 à 63)");
+                anyhow::ensure!(row < 64, "row {row} is outside the pattern (0 to 63)");
                 anyhow::ensure!(
                     first - 1 + cells.len() <= song.channels,
-                    "ligne {row:02} : {} cellules à partir de la voie {first}, pour {} voies",
+                    "row {row:02}: {} cells from voice {first}, for {} voices",
                     cells.len(),
                     song.channels
                 );
@@ -395,15 +394,15 @@ impl Tracker {
             }
             Ok(vec![ed.set_pattern(p.pattern, pattern)?])
         })?;
-        Ok(format!("{result} ({count} lignes)"))
+        Ok(format!("{result} ({count} rows)"))
     }
 
-    #[tool(description = "Vide un pattern.")]
+    #[tool(description = "Clears a pattern.")]
     async fn pattern_clear(&self, Parameters(p): Parameters<PatternIndex>) -> ToolResult {
-        self.edit(format!("pattern {:02} vidé", p.pattern), |ed| {
+        self.edit(format!("pattern {:02} cleared", p.pattern), |ed| {
             anyhow::ensure!(
                 p.pattern < ed.song().patterns.len(),
-                "pattern {} inexistant",
+                "no pattern {}",
                 p.pattern
             );
             Ok(vec![ed.set_pattern(
@@ -414,29 +413,29 @@ impl Tracker {
     }
 
     #[tool(
-        description = "Copie un pattern vers un autre (existant, ou nouveau s'il suit le dernier)."
+        description = "Copies a pattern onto another one (existing, or new if it follows the last)."
     )]
     async fn pattern_copy(&self, Parameters(p): Parameters<PatternCopy>) -> ToolResult {
         self.edit(
-            format!("pattern {:02} copié vers {:02}", p.from, p.to),
+            format!("pattern {:02} copied to {:02}", p.from, p.to),
             |ed| {
                 let source = ed
                     .song()
                     .patterns
                     .get(p.from)
                     .cloned()
-                    .ok_or_else(|| anyhow::anyhow!("pattern {} inexistant", p.from))?;
+                    .ok_or_else(|| anyhow::anyhow!("no pattern {}", p.from))?;
                 Ok(vec![ed.set_pattern(p.to, source)?])
             },
         )
     }
 
     #[tool(
-        description = "Transpose les notes d'un pattern de n demi-tons (toutes les voies, ou certaines)."
+        description = "Transposes the notes of a pattern by n semitones (every voice, or some)."
     )]
     async fn pattern_transpose(&self, Parameters(p): Parameters<Transpose>) -> ToolResult {
         let description = format!(
-            "pattern {:02} transposé de {:+} demi-tons",
+            "pattern {:02} transposed by {:+} semitones",
             p.pattern, p.semitones
         );
         self.edit(description, |ed| {
@@ -445,7 +444,7 @@ impl Tracker {
                 .patterns
                 .get(p.pattern)
                 .cloned()
-                .ok_or_else(|| anyhow::anyhow!("pattern {} inexistant", p.pattern))?;
+                .ok_or_else(|| anyhow::anyhow!("no pattern {}", p.pattern))?;
             let voices = p
                 .voices
                 .clone()
@@ -454,7 +453,7 @@ impl Tracker {
                 for &v in &voices {
                     let cell = cells
                         .get_mut(v.wrapping_sub(1))
-                        .ok_or_else(|| anyhow::anyhow!("voie {v} inexistante"))?;
+                        .ok_or_else(|| anyhow::anyhow!("no voice {v}"))?;
                     if cell.period == 0 {
                         continue;
                     }
@@ -462,12 +461,12 @@ impl Tracker {
                         .iter()
                         .position(|&x| x == cell.period)
                         .ok_or_else(|| {
-                            anyhow::anyhow!("ligne {row:02} voie {v} : note hors des octaves 1 à 3")
+                            anyhow::anyhow!("row {row:02} voice {v}: note outside octaves 1 to 3")
                         })?;
                     let target = index as i32 + p.semitones;
                     anyhow::ensure!(
                         (0..36).contains(&target),
-                        "ligne {row:02} voie {v} : {} transposé sortirait des octaves 1 à 3",
+                        "row {row:02} voice {v}: {} would leave octaves 1 to 3",
                         note::name(index)
                     );
                     cell.period = note::PERIODS[target as usize];
@@ -478,7 +477,7 @@ impl Tracker {
     }
 
     #[tool(
-        description = "Liste les samples non vides : numéro, nom, taille, volume, finetune, boucle."
+        description = "Lists the non-empty samples: number, name, size, volume, finetune, loop."
     )]
     async fn sample_list(&self) -> String {
         self.with(|s| {
@@ -492,7 +491,7 @@ impl Tracker {
                 .map(|(i, x)| {
                     let looped = if x.loop_length > 1 {
                         format!(
-                            ", boucle {}+{}",
+                            ", loop {}+{}",
                             x.loop_start as u32 * 2,
                             x.loop_length as u32 * 2
                         )
@@ -500,7 +499,7 @@ impl Tracker {
                         String::new()
                     };
                     format!(
-                        "{:02} {:<22} {:>6} octets, vol {:>2}, finetune {:+}{looped}",
+                        "{:02} {:<22} {:>6} bytes, vol {:>2}, finetune {:+}{looped}",
                         i + 1,
                         x.display_name(),
                         x.data.len(),
@@ -510,7 +509,7 @@ impl Tracker {
                 })
                 .collect();
             if lines.is_empty() {
-                "aucun sample".to_string()
+                "no samples".to_string()
             } else {
                 lines.join("\n")
             }
@@ -518,7 +517,7 @@ impl Tracker {
     }
 
     #[tool(
-        description = "Génère un sample : forme d'onde en boucle (sine, square, pulse, saw, triangle, noise) ou percussion (kick, snare, hihat, à jouer en C-3)."
+        description = "Generates a sample: looped waveform (sine, square, pulse, saw, triangle, noise) or drum (kick, snare, hihat, to be played at C-3)."
     )]
     async fn sample_generate(&self, Parameters(p): Parameters<Generate>) -> ToolResult {
         let mut sample = samples::generate(&p.waveform, p.cycle.unwrap_or(32)).map_err(err)?;
@@ -527,54 +526,53 @@ impl Tracker {
             sample.set_name(name);
         }
         let size = sample.data.len();
-        let description = format!("sample {:02} : {} généré", p.sample, p.waveform);
+        let description = format!("sample {:02}: {} generated", p.sample, p.waveform);
         let result = self.edit(description, |ed| Ok(vec![ed.set_sample(p.sample, sample)?]))?;
-        Ok(format!("{result} ({size} octets)"))
+        Ok(format!("{result} ({size} bytes)"))
     }
 
     #[tool(
-        description = "Charge un fichier WAV ou AIFF dans un sample (mono, 8 bits, sans rééchantillonnage ; 128 Ko au plus)."
+        description = "Loads a WAV or AIFF file into a sample (mono, 8 bits, no resampling; 128 KB at most)."
     )]
     async fn sample_load(&self, Parameters(p): Parameters<LoadSample>) -> ToolResult {
         let report = samples::import(Path::new(&p.path), p.halve.unwrap_or(false)).map_err(err)?;
         let size = report.sample.data.len();
-        let description = format!("sample {:02} : {} chargé", p.sample, p.path);
+        let description = format!("sample {:02}: {} loaded", p.sample, p.path);
         let result = self.edit(description, |ed| {
             Ok(vec![ed.set_sample(p.sample, report.sample)?])
         })?;
-        let mut notes = vec![format!("{size} octets, {} Hz", report.rate)];
+        let mut notes = vec![format!("{size} bytes, {} Hz", report.rate)];
         if report.truncated {
-            notes.push("TRONQUÉ à 128 Ko (essayer halve)".to_string());
+            notes.push("TRUNCATED to 128 KB (try halve)".to_string());
         }
         notes.push(match report.natural_note {
-            Some(n) => format!("hauteur d'origine en {n}"),
+            Some(n) => format!("original pitch at {n}"),
             None if report.rate as f64 > note::period_to_hz(note::PERIODS[35]) => {
-                "hauteur d'origine au-dessus de B-3 : il sonnera plus grave (essayer halve)"
-                    .to_string()
+                "original pitch above B-3: it will sound lower (try halve)".to_string()
             }
-            None => "hauteur d'origine sous C-1 : il sonnera plus aigu".to_string(),
+            None => "original pitch below C-1: it will sound higher".to_string(),
         });
         Ok(format!("{result} ({})", notes.join(", ")))
     }
 
-    #[tool(description = "Règle un sample : nom, volume, finetune, boucle (en octets).")]
+    #[tool(description = "Tunes a sample: name, volume, finetune, loop (in bytes).")]
     async fn sample_set(&self, Parameters(p): Parameters<SampleSet>) -> ToolResult {
-        self.edit(format!("sample {:02} réglé", p.sample), |ed| {
+        self.edit(format!("sample {:02} tuned", p.sample), |ed| {
             let mut sample = ed
                 .song()
                 .samples
                 .get(p.sample.wrapping_sub(1))
                 .cloned()
-                .ok_or_else(|| anyhow::anyhow!("sample {} inexistant (1 à 31)", p.sample))?;
+                .ok_or_else(|| anyhow::anyhow!("no sample {} (1 to 31)", p.sample))?;
             if let Some(name) = &p.name {
                 sample.set_name(name);
             }
             if let Some(v) = p.volume {
-                anyhow::ensure!(v <= 64, "volume de 0 à 64");
+                anyhow::ensure!(v <= 64, "volume from 0 to 64");
                 sample.volume = v;
             }
             if let Some(f) = p.finetune {
-                anyhow::ensure!((-8..=7).contains(&f), "finetune de -8 à +7");
+                anyhow::ensure!((-8..=7).contains(&f), "finetune from -8 to +7");
                 sample.finetune = (f as u8) & 0x0F;
             }
             if p.loop_start.is_some() || p.loop_length.is_some() {
@@ -585,7 +583,7 @@ impl Tracker {
                 } else {
                     anyhow::ensure!(
                         start + length <= sample.data.len(),
-                        "boucle {start}+{length} au-delà du sample ({} octets)",
+                        "loop {start}+{length} goes past the sample ({} bytes)",
                         sample.data.len()
                     );
                     (sample.loop_start, sample.loop_length) =
@@ -597,18 +595,14 @@ impl Tracker {
     }
 
     #[tool(
-        description = "Mixage de la session (non enregistré dans le .mod, appliqué au rendu WAV) : coupe, solo ou volume d'une voie."
+        description = "Session mix (not saved in the .mod, applied to WAV renders): mute, solo or volume of a voice."
     )]
     async fn mix_set(&self, Parameters(p): Parameters<MixSet>) -> ToolResult {
         self.with(|s| {
             let mixer = &mut s.editor.mixer;
             let v = p.voice.wrapping_sub(1);
             if v >= mixer.mute.len() {
-                return Err(format!(
-                    "voie {} inexistante (1 à {})",
-                    p.voice,
-                    mixer.mute.len()
-                ));
+                return Err(format!("no voice {} (1 to {})", p.voice, mixer.mute.len()));
             }
             if let Some(m) = p.mute {
                 mixer.mute[v] = m;
@@ -620,16 +614,16 @@ impl Tracker {
                 mixer.volume[v] = volume.clamp(0.0, 1.0);
             }
             let state = format!(
-                "voie {} : coupée {}, solo {}, volume {:.2}",
+                "voice {}: muted {}, solo {}, volume {:.2}",
                 p.voice, mixer.mute[v], mixer.solo[v], mixer.volume[v]
             );
-            s.editor.log(Origin::Agent, format!("mixage : {state}"));
+            s.editor.log(Origin::Agent, format!("mix: {state}"));
             Ok(state)
         })
     }
 
     #[tool(
-        description = "Rend le morceau en WAV 16 bits 48 kHz (stéréo, ou une piste par voie), avec le mixage de la session."
+        description = "Renders the song to a 16-bit 48 kHz WAV (stereo, or one track per voice), with the session mix."
     )]
     async fn render_wav(&self, Parameters(p): Parameters<RenderWav>) -> ToolResult {
         let (song, mixer) =
@@ -643,7 +637,7 @@ impl Tracker {
             let stem = path.with_extension("");
             let mut files = Vec::new();
             for (v, track) in tracks.iter().enumerate() {
-                let file = PathBuf::from(format!("{}-voie{}.wav", stem.display(), v + 1));
+                let file = PathBuf::from(format!("{}-voice{}.wav", stem.display(), v + 1));
                 wav::write(&file, track, 1, rate).map_err(err)?;
                 files.push(file.display().to_string());
             }
@@ -653,45 +647,43 @@ impl Tracker {
             wav::write(&path, &out, 2, rate).map_err(err)?;
             (out.len() / 2, vec![path.display().to_string()])
         };
-        let seconds = frames as f64 / rate as f64;
         let limit = if replayer.ended() {
             ""
         } else {
-            " (durée maximale atteinte)"
+            " (maximum duration reached)"
         };
         self.with(|s| {
             s.editor
-                .log(Origin::Agent, format!("rendu WAV : {}", files.join(", ")))
+                .log(Origin::Agent, format!("WAV render: {}", files.join(", ")))
         });
         Ok(format!(
-            "{} — {}:{:04.1}{limit}",
+            "{} — {}{limit}",
             files.join(", "),
-            (seconds / 60.0) as u32,
-            seconds % 60.0
+            minutes(frames as f64 / rate as f64)
         ))
     }
 
-    #[tool(description = "Annule la dernière modification.")]
+    #[tool(description = "Undoes the last change.")]
     async fn undo(&self) -> ToolResult {
         self.with(|s| {
             s.editor
                 .undo(Origin::Agent)
-                .map(|d| format!("annulé : {d}"))
-                .ok_or_else(|| "rien à annuler".into())
+                .map(|d| format!("undone: {d}"))
+                .ok_or_else(|| "nothing to undo".into())
         })
     }
 
-    #[tool(description = "Rétablit la dernière modification annulée.")]
+    #[tool(description = "Redoes the last undone change.")]
     async fn redo(&self) -> ToolResult {
         self.with(|s| {
             s.editor
                 .redo(Origin::Agent)
-                .map(|d| format!("rétabli : {d}"))
-                .ok_or_else(|| "rien à rétablir".into())
+                .map(|d| format!("redone: {d}"))
+                .ok_or_else(|| "nothing to redo".into())
         })
     }
 
-    #[tool(description = "Dernières lignes du journal des modifications.")]
+    #[tool(description = "Last lines of the change journal.")]
     async fn history(&self, Parameters(p): Parameters<History>) -> String {
         self.with(|s| {
             let text = journal_text(&s.editor);
@@ -707,15 +699,17 @@ impl ServerHandler for Tracker {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("smpltrckr", env!("CARGO_PKG_VERSION")))
             .with_instructions(
-                "smpltrckr : tracker façon ProTracker (.mod, 4 voies, 31 samples, patterns de 64 lignes). \
-                 Lire d'abord reference(topic=\"guide\"). Les patterns s'écrivent en notation texte : \
-                 `NN | C-3 01 A04 | ... .. ... | …` (note, sample en décimal, effet en hexadécimal). \
-                 Toute modification s'annule avec undo.",
+                "smpltrckr: a ProTracker-style tracker (.mod, 4 voices, 31 samples, 64-row patterns). \
+                 Read reference(topic=\"guide\") first. Patterns are written in text notation: \
+                 `NN | C-3 01 A04 | ... .. ... | …` (note, sample in decimal, effect in hex). \
+                 Every change can be undone with undo.",
             )
     }
 }
 
 pub fn run() -> anyhow::Result<()> {
+    // The agent side speaks English, whatever the user's locale.
+    crate::lang::set("en");
     tokio::runtime::Runtime::new()?.block_on(async {
         let service = Tracker::new().serve(rmcp::transport::stdio()).await?;
         service.waiting().await?;

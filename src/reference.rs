@@ -1,4 +1,4 @@
-//! Aide-mémoire pour l'agent : effets ProTracker, notes, gammes, accords, mode d'emploi.
+//! Cheat sheet for the agent: ProTracker effects, notes, scales, chords, and a how-to.
 
 pub const TOPICS: [&str; 5] = ["guide", "effects", "notes", "scales", "chords"];
 
@@ -14,128 +14,128 @@ pub fn get(topic: &str) -> Option<&'static str> {
 }
 
 const GUIDE: &str = "\
-# Composer avec smpltrckr
+# Composing with smpltrckr
 
-Un morceau .mod : 4 voies, 31 samples, des patterns de 64 lignes, et une liste d'ordre qui
-dit dans quel ordre jouer les patterns (un pattern peut revenir plusieurs fois).
+A .mod song: 4 voices, 31 samples, 64-row patterns, and an order list that tells in which
+order the patterns play (a pattern may come back several times).
 
-## Le temps
-- Vitesse (ticks par ligne) et tempo (BPM) : par défaut vitesse 6 et 125 BPM, soit 120 ms par
-  ligne, 16 lignes = une mesure de 4 temps à 125 BPM (une ligne = une double croche).
-- Fxx change la vitesse (F01 à F1F) ou le tempo (F20 à FFF) ; à placer en ligne 00 du premier
-  pattern, sur n'importe quelle voie. F00 arrête le morceau. Le plus simple : `song_set_tempo`.
-- Durée d'une ligne = vitesse × 2,5 / BPM secondes.
+## Time
+- Speed (ticks per row) and tempo (BPM): speed 6 and 125 BPM by default, i.e. 120 ms per
+  row; 16 rows = one 4/4 bar at 125 BPM (one row = a sixteenth note).
+- Fxx changes the speed (F01 to F1F) or the tempo (F20 to FFF); put it on row 00 of the
+  first pattern, on any voice. F00 stops the song. Easiest: `song_set_tempo`.
+- Row duration = speed × 2.5 / BPM seconds.
 
-## Les cellules
-`C-3 01 A04` : note, sample (01 à 31, en décimal), effet (3 chiffres hexadécimaux).
-`...` = rien. Une note sans sample garde le sample précédent de la voie (et son volume).
-Une ligne s'écrit `NN | cellule voie 1 | cellule voie 2 | ...`.
-Une note tient jusqu'à la note suivante de la même voie, ou jusqu'à la fin du sample.
-Pour arrêter une note qui boucle : EC0 (coupe), C00 (volume 0), ou une note suivante.
+## Cells
+`C-3 01 A04`: note, sample (01 to 31, decimal), effect (3 hex digits).
+`...` = nothing. A note without a sample keeps the voice's previous sample (and its volume).
+A row is written `NN | voice 1 cell | voice 2 cell | ...`.
+A note lasts until the next note on the same voice, or the end of the sample.
+To stop a looping note: EC0 (cut), C00 (volume 0), or a next note.
 
-## Les hauteurs
-Notes de C-1 à B-3 (3 octaves ProTracker). La hauteur réelle dépend du sample :
-- formes d'onde générées (cycle de 32 octets) : C-1 ≈ do 3, C-2 ≈ do 4, C-3 ≈ do 5 ;
-  avec un cycle de 64 octets, tout descend d'une octave (utile pour les basses) ;
-- percussions générées (kick, snare, hihat) : à jouer en C-3 ;
-- samples importés : `sample_load` indique la note qui rend la hauteur d'origine.
+## Pitch
+Notes from C-1 to B-3 (ProTracker's 3 octaves). The actual pitch depends on the sample:
+- generated waveforms (32-byte cycle): C-1 ≈ C3, C-2 ≈ C4 (middle C), C-3 ≈ C5;
+  with a 64-byte cycle everything drops an octave (handy for basses);
+- generated drums (kick, snare, hihat): play them at C-3;
+- imported samples: `sample_load` tells which note gives the original pitch.
 
-## Méthode conseillée
-1. `song_new`, puis générer ou charger les samples (`sample_generate`, `sample_load`).
-2. Écrire un pattern de rythme (voie 1 et 2), une basse (voie 3), une mélodie ou des
-   accords en arpège (voie 4, effet 0xy).
-3. Varier : copier un pattern (`pattern_copy`), le modifier, transposer (`pattern_transpose`).
-4. Enchaîner les patterns avec `order_set`, vérifier avec `song_info` (durée), puis
-   `render_wav` et `song_save`.
-5. Tout s'annule avec `undo`.
+## Suggested method
+1. `song_new`, then generate or load samples (`sample_generate`, `sample_load`).
+2. Write a rhythm pattern (voices 1 and 2), a bass line (voice 3), a melody or arpeggiated
+   chords (voice 4, effect 0xy).
+3. Vary: copy a pattern (`pattern_copy`), change it, transpose it (`pattern_transpose`).
+4. Chain the patterns with `order_set`, check with `song_info` (duration), then
+   `render_wav` and `song_save`.
+5. Everything can be undone with `undo`.
 
-## Le mixage
-`mix_set` coupe, met en solo ou règle le volume d'une voie pour la session et le rendu WAV ;
-il n'est pas enregistré dans le .mod. Pour un volume permanent : volume du sample, ou effet Cxx.
+## Mixing
+`mix_set` mutes, solos or sets the volume of a voice for the session and WAV renders; it is
+not saved in the .mod. For a lasting volume: the sample volume, or effect Cxx.
 ";
 
 const EFFECTS: &str = "\
-# Effets ProTracker (3 chiffres hexadécimaux : effet x y, ou effet xx)
+# ProTracker effects (3 hex digits: effect x y, or effect xx)
 
-0xy  Arpège : alterne note, note+x demi-tons, note+y demi-tons à chaque tick (accords).
-1xx  Portamento vers le haut de xx unités de période par tick (après le tick 0).
-2xx  Portamento vers le bas.
-3xx  Portamento vers la note écrite, vitesse xx (00 = vitesse précédente). La note ne
-     redémarre pas : sert aux glissés. Avec 3xx, la note est une cible.
-4xy  Vibrato : vitesse x, profondeur y (0 = valeur précédente).
-5xy  Portamento vers la note (3, vitesse précédente) + glissement de volume (comme Axy).
-6xy  Vibrato (4, valeurs précédentes) + glissement de volume (comme Axy).
-7xy  Trémolo : vitesse x, profondeur y.
-9xx  Départ dans le sample à xx × 256 octets.
-Axy  Glissement de volume à chaque tick : +x, ou -y si x = 0.
-Bxx  Saute à la position xx de la liste d'ordre (en hexadécimal).
-Cxx  Volume de la voie (00 à 40 en hexadécimal, soit 0 à 64).
-Dxy  Fin du pattern : saute à la ligne x×10+y (en décimal) de la position suivante.
-E1x  Portamento fin vers le haut de x (une seule fois).
-E2x  Portamento fin vers le bas de x.
-E4x  Forme du vibrato : 0 sinus, 1 rampe, 2 carré (+4 : ne pas réinitialiser).
-E5x  Finetune de la note (0 à 7, puis 8 à F = -8 à -1).
-E60  Début de boucle de pattern ; E6x : rejoue x fois depuis le début de boucle.
-E7x  Forme du trémolo.
-E9x  Relance la note tous les x ticks.
-EAx  Volume +x (une seule fois).
-EBx  Volume -x (une seule fois).
-ECx  Coupe la note au tick x.
-EDx  Retarde la note au tick x.
-EEx  Répète la ligne x fois (les notes ne sont pas rejouées).
-Fxx  Vitesse (01 à 1F) ou tempo en BPM (20 à FF). F00 arrête le morceau.
+0xy  Arpeggio: cycles note, note+x semitones, note+y semitones on every tick (chords).
+1xx  Portamento up by xx period units per tick (after tick 0).
+2xx  Portamento down.
+3xx  Portamento to the written note, speed xx (00 = previous speed). The note does not
+     restart: used for glides. With 3xx, the note is a target.
+4xy  Vibrato: speed x, depth y (0 = previous value).
+5xy  Portamento to note (3, previous speed) + volume slide (like Axy).
+6xy  Vibrato (4, previous values) + volume slide (like Axy).
+7xy  Tremolo: speed x, depth y.
+9xx  Start the sample at xx × 256 bytes.
+Axy  Volume slide on every tick: +x, or -y when x = 0.
+Bxx  Jump to position xx of the order list (hex).
+Cxx  Voice volume (00 to 40 hex, i.e. 0 to 64).
+Dxy  Pattern break: jump to row x×10+y (decimal) of the next position.
+E1x  Fine portamento up by x (once).
+E2x  Fine portamento down by x.
+E4x  Vibrato waveform: 0 sine, 1 ramp, 2 square (+4: do not reset).
+E5x  Note finetune (0 to 7, then 8 to F = -8 to -1).
+E60  Pattern loop start; E6x: play again x times from the loop start.
+E7x  Tremolo waveform.
+E9x  Retrigger the note every x ticks.
+EAx  Volume +x (once).
+EBx  Volume -x (once).
+ECx  Cut the note at tick x.
+EDx  Delay the note to tick x.
+EEx  Repeat the row x times (notes are not played again).
+Fxx  Speed (01 to 1F) or tempo in BPM (20 to FF). F00 stops the song.
 
-Ignorés par smpltrckr : 8xx (panoramique), E0x (filtre Amiga), E3x (glissando), EFx.
+Ignored by smpltrckr: 8xx (panning), E0x (Amiga filter), E3x (glissando), EFx.
 ";
 
 const NOTES: &str = "\
-# Notes et hauteurs
+# Notes and pitch
 
-Noms : C- C# D- D# E- F- F# G- G# A- A# B-, suivis de l'octave 1, 2 ou 3 (ex. C#2).
-Pas de bémols : Db = C#, Eb = D#, Gb = F#, Ab = G#, Bb = A#.
+Names: C- C# D- D# E- F- F# G- G# A- A# B-, followed by octave 1, 2 or 3 (e.g. C#2).
+No flats: Db = C#, Eb = D#, Gb = F#, Ab = G#, Bb = A#.
 
-Avec un sample de cycle 32 octets (formes générées) :
-  C-1 ≈ 130 Hz (do 3)   C-2 ≈ 259 Hz (do 4)   C-3 ≈ 518 Hz (do 5)   B-3 ≈ 979 Hz
-Avec un cycle de 64 octets : une octave plus bas. De 16 octets : une octave plus haut.
-Un sample joué en C-3 est lu à 16 574 octets par seconde, en C-2 à 8 287.
+With a 32-byte cycle sample (generated waveforms):
+  C-1 ≈ 130 Hz (C3)   C-2 ≈ 259 Hz (C4)   C-3 ≈ 518 Hz (C5)   B-3 ≈ 979 Hz
+With a 64-byte cycle: one octave lower. With 16 bytes: one octave higher.
+A sample played at C-3 is read at 16,574 bytes per second, at C-2 at 8,287.
 
-Transposer de n demi-tons : `pattern_transpose`. Une octave = 12 demi-tons.
+Transpose by n semitones: `pattern_transpose`. One octave = 12 semitones.
 ";
 
 const SCALES: &str = "\
-# Gammes (demi-tons depuis la tonique)
+# Scales (semitones from the tonic)
 
-majeure            0 2 4 5 7 9 11     ex. C : C D E F G A B
-mineure naturelle  0 2 3 5 7 8 10     ex. A : A B C D E F G
-mineure harmonique 0 2 3 5 7 8 11     ex. A : A B C D E F G#
-dorienne           0 2 3 5 7 9 10     ex. D : D E F G A B C
-phrygienne         0 1 3 5 7 8 10     ex. E : E F G A B C D
-lydienne           0 2 4 6 7 9 11     ex. F : F G A B C D E
-mixolydienne       0 2 4 5 7 9 10     ex. G : G A B C D E F
-pentatonique maj.  0 2 4 7 9          ex. C : C D E G A
-pentatonique min.  0 3 5 7 10         ex. A : A C D E G
-blues              0 3 5 6 7 10       ex. A : A C D D# E G
+major              0 2 4 5 7 9 11     e.g. C: C D E F G A B
+natural minor      0 2 3 5 7 8 10     e.g. A: A B C D E F G
+harmonic minor     0 2 3 5 7 8 11     e.g. A: A B C D E F G#
+dorian             0 2 3 5 7 9 10     e.g. D: D E F G A B C
+phrygian           0 1 3 5 7 8 10     e.g. E: E F G A B C D
+lydian             0 2 4 6 7 9 11     e.g. F: F G A B C D E
+mixolydian         0 2 4 5 7 9 10     e.g. G: G A B C D E F
+major pentatonic   0 2 4 7 9          e.g. C: C D E G A
+minor pentatonic   0 3 5 7 10         e.g. A: A C D E G
+blues              0 3 5 6 7 10       e.g. A: A C D D# E G
 
-Progressions courantes (degrés) : I-V-vi-IV, i-VI-III-VII, ii-V-I, i-iv-v, I-IV-V.
+Common progressions (degrees): I-V-vi-IV, i-VI-III-VII, ii-V-I, i-iv-v, I-IV-V.
 ";
 
 const CHORDS: &str = "\
-# Accords et arpèges (effet 0xy)
+# Chords as arpeggios (effect 0xy)
 
-Un accord se joue en arpège sur une seule voie : note fondamentale + effet 0xy, où x et y
-sont les intervalles en demi-tons (hexadécimal) des deux autres notes.
+A chord plays as an arpeggio on a single voice: root note + effect 0xy, where x and y are
+the intervals in semitones (hex) of the other two notes.
 
-majeur        047   (fondamentale, tierce majeure, quinte)
-mineur        037
-diminué       036
-augmenté      048
-sus2          027
-sus4          057
-septième      04A (sans quinte : tierce et septième mineure)
-maj7          04B
-min7          03A
-quinte seule  07C (quinte et octave, « power chord »)
+major        047   (root, major third, fifth)
+minor        037
+diminished   036
+augmented    048
+sus2         027
+sus4         057
+seventh      04A (no fifth: third and minor seventh)
+maj7         04B
+min7         03A
+power chord  07C (fifth and octave)
 
-Ex. : `A-2 05 037` joue un la mineur ; `F-2 05 047` un fa majeur.
-L'arpège sonne mieux avec une vitesse de 3 à 6 et un sample bouclé (pulse, square).
+E.g. `A-2 05 037` plays an A minor; `F-2 05 047` an F major.
+Arpeggios sound best with a speed of 3 to 6 and a looped sample (pulse, square).
 ";

@@ -1,4 +1,4 @@
-//! Liste les périodes absentes de la table ProTracker dans les modules donnés.
+//! Lists the periods missing from the ProTracker table in the given modules.
 use std::collections::BTreeMap;
 
 fn main() {

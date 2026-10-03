@@ -1,7 +1,8 @@
-//! Interface clavier en mode texte.
+//! Text-mode keyboard interface. « Larguez les amarres ! »
 
 mod app;
 mod dialog;
+mod effects;
 mod keys;
 mod view;
 
@@ -9,12 +10,13 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use ratatui::crossterm::event::{self, Event};
+use rust_i18n::t;
 
 use crate::format::protracker;
 use crate::song::Song;
 use app::{App, Audio};
 
-/// Ouvre l'éditeur sur un fichier (créé à l'enregistrement s'il n'existe pas encore).
+/// Opens the editor on a file (created on first save if it does not exist yet).
 pub fn run(file: Option<PathBuf>, layout: Option<String>) -> anyhow::Result<()> {
     let song = match &file {
         Some(path) if path.exists() => protracker::read(&std::fs::read(path)?)?,
@@ -24,17 +26,17 @@ pub fn run(file: Option<PathBuf>, layout: Option<String>) -> anyhow::Result<()> 
         Ok(audio) => (audio, None),
         Err(e) => (
             Audio::silent(&song),
-            Some(format!("pas de sortie audio : {e:#}")),
+            Some(t!("status.no_audio", error = format!("{e:#}")).into_owned()),
         ),
     };
     let mut app = App::new(song, file, audio);
     app.layout = match layout {
         Some(name) => keys::Layout::by_name(&name).ok_or_else(|| {
-            anyhow::anyhow!("clavier inconnu {name:?} : qwerty, azerty ou qwertz")
+            anyhow::anyhow!(t!("status.unknown_layout", layout = format!("{name:?}")))
         })?,
         None => keys::detect_layout(),
     };
-    app.status = format!("clavier {} (F3 pour changer) · ? : aide", app.layout.name);
+    app.status = t!("status.welcome", layout = app.layout.name).into_owned();
     if let Some(warning) = warning {
         app.status = warning;
     }

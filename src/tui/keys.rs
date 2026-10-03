@@ -1,22 +1,22 @@
-//! Raccourcis clavier : la table unique qui relie les touches aux actions.
+//! Keyboard shortcuts: the one table that maps keys to actions.
 //!
-//! Le clavier « piano » suit la position physique des touches, comme dans ProTracker et FT2 :
-//! la même place sur un clavier QWERTY, AZERTY ou QWERTZ. Un terminal transmet des caractères,
-//! pas des positions : chaque disposition dit donc quel caractère produit chaque touche.
+//! The 'piano' keys follow the physical position of the keys, as in ProTracker and FT2: the
+//! same spot on a QWERTY, AZERTY or QWERTZ keyboard. A terminal sends characters, not
+//! positions, so each layout tells which character each key produces.
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-/// Disposition du clavier.
+/// Keyboard layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Layout {
     pub name: &'static str,
-    /// Rangée du bas puis rangée du milieu, aux places de « z s x d c v g b h n j m , l . ; / »
-    /// sur un QWERTY : do, do#, ré… de l'octave choisie.
+    /// Bottom then middle row, at the spots of 'z s x d c v g b h n j m , l . ; /' on a QWERTY:
+    /// C, C#, D… of the chosen octave.
     piano_low: &'static str,
-    /// Rangée des lettres et des chiffres, aux places de « q 2 w 3 e r 5 t 6 y 7 u i 9 o 0 p » :
-    /// l'octave au-dessus.
+    /// Letter and digit rows, at the spots of 'q 2 w 3 e r 5 t 6 y 7 u i 9 o 0 p': the octave
+    /// above.
     piano_high: &'static str,
-    /// Caractères de la rangée des chiffres sans majuscule, de 1 à 9 puis 0.
+    /// Characters of the digit row without Shift, from 1 to 9 then 0.
     digit_row: [char; 10],
 }
 
@@ -53,19 +53,19 @@ impl Layout {
         LAYOUTS.iter().copied().find(|l| l.name == wanted)
     }
 
-    /// Disposition suivante (F3).
+    /// Next layout (F3).
     pub fn next(self) -> Layout {
         let i = LAYOUTS.iter().position(|l| *l == self).unwrap_or(0);
         LAYOUTS[(i + 1) % LAYOUTS.len()]
     }
 
-    /// Demi-tons au-dessus du do de l'octave choisie.
+    /// Semitones above the C of the chosen octave.
     pub fn piano(&self, c: char) -> Option<i32> {
         let find = |row: &str| row.chars().position(|x| x == c).map(|i| i as i32);
         find(self.piano_low).or_else(|| find(self.piano_high).map(|i| i + 12))
     }
 
-    /// Chiffre tapé, avec ou sans majuscule (sur AZERTY, « é » vaut 2).
+    /// Digit typed, with or without Shift (on AZERTY, 'é' stands for 2).
     pub fn digit(&self, c: char) -> Option<u32> {
         c.to_digit(10).or_else(|| {
             self.digit_row
@@ -75,18 +75,19 @@ impl Layout {
         })
     }
 
-    /// Chiffre hexadécimal tapé (0-9, A-F).
+    /// Hex digit typed (0-9, A-F).
     pub fn hex_digit(&self, c: char) -> Option<u32> {
         self.digit(c).or_else(|| c.to_digit(16))
     }
 }
 
-/// Disposition au démarrage : `SMPLTRCKR_CLAVIER`, sinon celle du clavier principal de
-/// Hyprland, sinon celle de localectl, sinon QWERTY.
+/// Layout at startup: `SMPLTRCKR_KEYBOARD` (or `SMPLTRCKR_CLAVIER`), then Hyprland's main
+/// keyboard, then localectl, then QWERTY.
 pub fn detect_layout() -> Layout {
-    let from_env = std::env::var("SMPLTRCKR_CLAVIER")
-        .ok()
-        .and_then(|n| Layout::by_name(&n));
+    let from_env = ["SMPLTRCKR_KEYBOARD", "SMPLTRCKR_CLAVIER"]
+        .iter()
+        .filter_map(|var| std::env::var(var).ok())
+        .find_map(|n| Layout::by_name(&n));
     from_env
         .or_else(hyprland_layout)
         .or_else(localectl_layout)
@@ -99,7 +100,7 @@ fn hyprland_layout() -> Option<Layout> {
         .output()
         .ok()?;
     let text = String::from_utf8(out.stdout).ok()?;
-    // Le clavier principal : « "layout": "fr" » dans le bloc qui contient « "main": true ».
+    // The main keyboard: '"layout": "fr"' in the block holding '"main": true'.
     let block = text.split('{').find(|b| b.contains("\"main\": true"))?;
     let layout = block
         .split("\"layout\": \"")
@@ -119,7 +120,7 @@ fn localectl_layout() -> Option<Layout> {
     Layout::by_name(line.split(':').nth(1)?.trim().split(',').next()?)
 }
 
-/// Zone qui reçoit les touches de navigation.
+/// Zone that gets the navigation keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
     Pattern,
@@ -129,7 +130,7 @@ pub enum Focus {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
-    // Général
+    // General
     Quit,
     Save,
     SaveAs,
@@ -153,7 +154,7 @@ pub enum Action {
     SetTempo,
     Help,
     NextLayout,
-    // Déplacements (selon la zone active)
+    // Moves (depending on the active zone)
     Up,
     Down,
     Left,
@@ -169,7 +170,7 @@ pub enum Action {
     ClearCell,
     InsertRow,
     DeleteRow,
-    // Liste d'ordre et samples
+    // Order list and samples
     Insert,
     Delete,
     Enter,
@@ -181,7 +182,7 @@ pub enum Action {
     Preview,
 }
 
-/// Action d'une touche, hors saisie (notes, chiffres) qui dépend de la colonne du curseur.
+/// Action of a key, apart from typing (notes, digits), which depends on the cursor column.
 pub fn action(key: KeyEvent, focus: Focus, layout: Layout) -> Option<Action> {
     use Action::*;
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
@@ -267,81 +268,15 @@ pub fn action(key: KeyEvent, focus: Focus, layout: Layout) -> Option<Action> {
     })
 }
 
-/// Rappel des touches de la zone active, affiché en bas de l'écran : (zone, « touche action · … »).
-pub const FOCUS_HINTS: [(&str, &str); 4] = [
-    (
-        "pattern, édition",
-        "Espace écoute · clavier piano notes · 0-9 A-F sample/effet · Suppr effacer · Entrée lire · F6 ordre · F7 samples · ? aide",
-    ),
-    (
-        "pattern",
-        "Espace éditer · Entrée lire · Ctrl+P boucle · Ctrl+B tempo · Alt+1…8 couper · F6 ordre · F7 samples · Ctrl+S enregistrer · ? aide",
-    ),
-    (
-        "ordre",
-        "↑↓ position · ←→ pattern (crée le suivant) · Inser ajouter · Suppr retirer · Entrée éditer · F5 pattern",
-    ),
-    (
-        "samples",
-        "↑↓ choisir · g générer · l charger WAV/AIFF · n renommer · ←→ volume · [ ] finetune · p écouter (Échap : silence) · Suppr vider · F5 pattern",
-    ),
-];
+/// Key reminder for the active zone, shown at the bottom of the screen: translation ids
+/// (pattern in edit mode, pattern, order list, samples).
+pub const FOCUS_HINTS: [&str; 4] = ["hint.edit", "hint.pattern", "hint.orders", "hint.samples"];
 
-/// Aide affichée par « ? » : (touches, action).
-pub const HELP: &[(&str, &str)] = &[
-    ("Entrée", "lire / arrêter le morceau depuis la position"),
-    ("Ctrl+P", "lire le pattern en boucle"),
-    ("Échap", "arrêter la lecture et les notes écoutées"),
-    (
-        "Espace",
-        "mode édition (sinon, les notes ne font que sonner)",
-    ),
-    (
-        "rangées du bas et du haut",
-        "notes (clavier piano, deux octaves, selon la disposition)",
-    ),
-    ("F1 / F2", "octave du clavier piano"),
-    ("F3", "disposition du clavier : QWERTY, AZERTY, QWERTZ"),
-    ("[ ]", "sample courant (dans les samples : finetune)"),
-    (
-        "flèches, PgPréc/PgSuiv",
-        "se déplacer ; Tab / Maj+Tab : voie suivante / précédente",
-    ),
-    (
-        "0-9 A-F",
-        "sample (décimal) et effet (hexadécimal) selon la colonne",
-    ),
-    ("Suppr / Retour arrière", "effacer le champ / la cellule"),
-    (
-        "Inser / Ctrl+K",
-        "insérer / supprimer une ligne dans la voie",
-    ),
-    ("Alt+1 … Alt+8", "couper / rétablir une voie"),
-    (
-        "Alt+S / Alt+0",
-        "solo de la voie du curseur / mixage remis à zéro",
-    ),
-    ("Alt+↑ / Alt+↓", "volume de la voie du curseur"),
-    ("F5 F6 F7", "zone active : pattern, liste d'ordre, samples"),
-    (
-        "ordre : ← → Inser Suppr Entrée",
-        "changer le pattern, ajouter, retirer, éditer",
-    ),
-    (
-        "samples : ← → l g n p Suppr",
-        "volume, charger, générer, renommer, écouter, vider",
-    ),
-    (
-        "Ctrl+S / Ctrl+W / Ctrl+O",
-        "enregistrer / enregistrer sous / ouvrir",
-    ),
-    ("Ctrl+Z / Ctrl+Y", "annuler / rétablir"),
-    ("Ctrl+T", "titre du morceau"),
-    ("Ctrl+B", "tempo (BPM) et vitesse au début du morceau"),
-    (
-        "Ctrl+Q",
-        "quitter (deux fois si le morceau n'est pas enregistré)",
-    ),
+/// Help page shown by "?": one translation id per line, `help.<id>.keys` and `help.<id>.what`.
+pub const HELP: &[&str] = &[
+    "play", "loop", "stop", "edit", "notes", "octave", "layout", "sample", "move", "digits",
+    "clear", "rows", "mute", "solo", "volume", "zones", "orders", "samples", "files", "undo",
+    "title", "tempo", "quit",
 ];
 
 #[cfg(test)]
@@ -351,12 +286,12 @@ mod tests {
     #[test]
     fn piano_keys_sit_at_the_same_places_on_every_layout() {
         let [qwerty, azerty, qwertz] = LAYOUTS;
-        // Touche en bas à gauche : do ; touche « A » du QWERTY (Q de l'AZERTY) : rien.
+        // Bottom-left key: C; the QWERTY 'A' key (AZERTY 'Q'): nothing.
         assert_eq!(qwerty.piano('z'), Some(0));
         assert_eq!(azerty.piano('w'), Some(0));
         assert_eq!(qwertz.piano('y'), Some(0));
         assert_eq!(azerty.piano('q'), None);
-        // Rangée du haut : do de l'octave suivante, puis do# sur la rangée des chiffres.
+        // Top row: C of the next octave, then C# on the digit row.
         assert_eq!(azerty.piano('a'), Some(12));
         assert_eq!(azerty.piano('é'), Some(13));
         assert_eq!(azerty.piano(','), Some(11));

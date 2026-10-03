@@ -1,12 +1,12 @@
-//! Écrit une copie d'un module où seule une voie garde ses notes : isolate module.mod voie sortie.mod
-//! Les autres voies ne gardent que leurs effets de déroulement (Bxx, Dxx, Fxx, E6x, EEx),
-//! pour que le morceau suive le même chemin. Sert à comparer les rendus voie par voie.
+//! Writes a copy of a module where only one voice keeps its notes: isolate module.mod voice out.mod
+//! The other voices only keep their flow effects (Bxx, Dxx, Fxx, E6x, EEx), so the song follows
+//! the same path. Used to compare renders voice by voice.
 use smpltrckr::format::protracker;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let [input, voice, output] = &args[..] else {
-        panic!("usage : isolate module.mod voie sortie.mod");
+        panic!("usage: isolate module.mod voice out.mod");
     };
     let keep: usize = voice.parse::<usize>().unwrap() - 1;
     let mut song = protracker::read(&std::fs::read(input).unwrap()).unwrap();

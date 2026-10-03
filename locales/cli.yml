@@ -1,0 +1,62 @@
+_version: 2
+
+cli.volume_syntax:
+  en: "expected voice=volume, e.g. 3=0.5"
+  fr: "attendu voie=volume, ex. 3=0.5"
+  ja: "「チャンネル=音量」の形で指定してください（例: 3=0.5）"
+cli.bad_voice:
+  en: "invalid voice %{voice}"
+  fr: "voie invalide %{voice}"
+  ja: "無効なチャンネル %{voice}"
+cli.bad_volume:
+  en: "invalid volume %{volume}"
+  fr: "volume invalide %{volume}"
+  ja: "無効な音量 %{volume}"
+cli.no_voice:
+  en: "no voice %{voice} (1 to %{count})"
+  fr: "voie %{voice} inexistante (1 à %{count})"
+  ja: "チャンネル %{voice} はありません（1〜%{count}）"
+cli.read_failed:
+  en: "cannot read %{path}"
+  fr: "lecture de %{path} impossible"
+  ja: "%{path} を読み込めません"
+cli.size_differs:
+  en: "size %{written} instead of %{original}"
+  fr: "taille %{written} au lieu de %{original}"
+  ja: "サイズが %{written}（元は %{original}）"
+cli.first_difference:
+  en: "first difference at byte %{offset}"
+  fr: "premier écart à l'octet %{offset}"
+  ja: "%{offset} バイト目で最初の差異"
+cli.roundtrip_ok:
+  en: "ok      %{path}"
+  fr: "ok      %{path}"
+  ja: "OK      %{path}"
+cli.roundtrip_failed:
+  en: "FAILED  %{path}: %{error}"
+  fr: "ÉCHEC   %{path} : %{error}"
+  ja: "失敗    %{path}: %{error}"
+cli.roundtrip_summary:
+  en: "%{files} file(s), %{failures} failure(s)"
+  fr: "%{files} fichier(s), %{failures} échec(s)"
+  ja: "%{files} ファイル、失敗 %{failures}"
+cli.roundtrip_failures:
+  en: "%{failures} file(s) failed"
+  fr: "%{failures} fichier(s) en échec"
+  ja: "%{failures} ファイルが失敗しました"
+cli.playing:
+  en: "playing \"%{title}\" (%{voices} voices) — Ctrl-C to stop"
+  fr: "lecture de « %{title} » (%{voices} voies) — Ctrl-C pour arrêter"
+  ja: "「%{title}」を再生中（%{voices} チャンネル）— Ctrl-C で停止"
+cli.position:
+  en: "position %{position} row %{row}"
+  fr: "position %{position} ligne %{row}"
+  ja: "ポジション %{position} 行 %{row}"
+cli.duration:
+  en: "duration: %{duration}"
+  fr: "durée : %{duration}"
+  ja: "長さ: %{duration}"
+cli.duration_capped:
+  en: "duration: %{duration} (maximum duration reached)"
+  fr: "durée : %{duration} (durée maximale atteinte)"
+  ja: "長さ: %{duration}（最大長に達しました）"

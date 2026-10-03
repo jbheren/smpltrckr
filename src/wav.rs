@@ -1,8 +1,8 @@
-//! Écriture de fichiers WAV PCM 16 bits.
+//! 16-bit PCM WAV files.
 
 use std::io::Write;
 
-/// Écrit des échantillons flottants (entrelacés si `channels` > 1) en WAV PCM 16 bits.
+/// Writes float samples (interleaved when `channels` > 1) as a 16-bit PCM WAV.
 pub fn write(
     path: &std::path::Path,
     samples: &[f32],
@@ -29,12 +29,12 @@ pub fn write(
     std::fs::File::create(path)?.write_all(&out)
 }
 
-/// Lit un WAV PCM 16 bits ou flottant 32 bits et le renvoie en mono, avec sa fréquence.
+/// Reads a 16-bit PCM or 32-bit float WAV and returns it as mono, with its sample rate.
 pub fn read_mono(path: &std::path::Path) -> anyhow::Result<(Vec<f32>, u32)> {
     let data = std::fs::read(path)?;
     anyhow::ensure!(
         data.len() > 12 && &data[..4] == b"RIFF" && &data[8..12] == b"WAVE",
-        "pas un WAV"
+        "not a WAV file"
     );
     let (mut format, mut channels, mut rate, mut bits) = (0u16, 0u16, 0u32, 0u16);
     let mut pos = 12;
@@ -64,7 +64,7 @@ pub fn read_mono(path: &std::path::Path) -> anyhow::Result<(Vec<f32>, u32)> {
                     .iter()
                     .map(|b| f32::from_le_bytes(*b))
                     .collect(),
-                _ => anyhow::bail!("WAV non pris en charge (format {format}, {bits} bits)"),
+                _ => anyhow::bail!("unsupported WAV (format {format}, {bits} bits)"),
             };
             let ch = channels.max(1) as usize;
             let mono = frames
@@ -75,7 +75,7 @@ pub fn read_mono(path: &std::path::Path) -> anyhow::Result<(Vec<f32>, u32)> {
         }
         pos += 8 + len + (len & 1);
     }
-    anyhow::bail!("WAV sans données")
+    anyhow::bail!("WAV without data")
 }
 
 #[cfg(test)]

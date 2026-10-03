@@ -1,0 +1,507 @@
+_version: 2
+
+# --- Status line -----------------------------------------------------------------------------
+status.help_hint:
+  en: "? : help"
+  fr: "? : aide"
+  ja: "? : ヘルプ"
+status.welcome:
+  en: "keyboard %{layout} (F3 to change) · ? : help"
+  fr: "clavier %{layout} (F3 pour changer) · ? : aide"
+  ja: "キーボード %{layout}（F3 で切替）· ? : ヘルプ"
+status.no_audio:
+  en: "no audio output: %{error}"
+  fr: "pas de sortie audio : %{error}"
+  ja: "オーディオ出力がありません: %{error}"
+status.unknown_layout:
+  en: "unknown keyboard %{layout}: qwerty, azerty or qwertz"
+  fr: "clavier inconnu %{layout} : qwerty, azerty ou qwertz"
+  ja: "不明なキーボード %{layout}: qwerty、azerty、qwertz のいずれか"
+status.quit_unsaved:
+  en: "song not saved: Ctrl+Q again to quit"
+  fr: "morceau non enregistré : Ctrl+Q encore pour quitter"
+  ja: "曲が保存されていません。もう一度 Ctrl+Q で終了"
+status.open_unsaved:
+  en: "song not saved: Ctrl+O again to open anyway"
+  fr: "morceau non enregistré : Ctrl+O encore pour ouvrir quand même"
+  ja: "曲が保存されていません。もう一度 Ctrl+O で開きます"
+status.undone:
+  en: "undone: %{what}"
+  fr: "annulé : %{what}"
+  ja: "取り消し: %{what}"
+status.redone:
+  en: "redone: %{what}"
+  fr: "rétabli : %{what}"
+  ja: "やり直し: %{what}"
+status.nothing_to_undo:
+  en: nothing to undo
+  fr: rien à annuler
+  ja: 取り消せる操作はありません
+status.nothing_to_redo:
+  en: nothing to redo
+  fr: rien à rétablir
+  ja: やり直せる操作はありません
+status.edit_mode:
+  en: edit mode
+  fr: mode édition
+  ja: 編集モード
+status.listen_mode:
+  en: listen mode
+  fr: mode écoute
+  ja: 試聴モード
+status.listen_mode_hint:
+  en: "listen mode: Space to edit"
+  fr: "mode écoute : Espace pour éditer"
+  ja: "試聴モード: Space で編集"
+status.layout:
+  en: "keyboard %{layout}"
+  fr: "clavier %{layout}"
+  ja: "キーボード %{layout}"
+status.note_out_of_range:
+  en: note outside octaves 1 to 3
+  fr: note hors des octaves 1 à 3
+  ja: 音符がオクターブ 1〜3 の範囲外です
+status.sample_max:
+  en: "sample %{sample}: 31 at most"
+  fr: "sample %{sample} : 31 au plus"
+  ja: "サンプル %{sample}: 最大 31 です"
+status.max_positions:
+  en: 128 positions at most
+  fr: 128 positions au plus
+  ja: ポジションは最大 128 です
+status.min_positions:
+  en: the order list keeps at least one position
+  fr: la liste d'ordre garde au moins une position
+  ja: 順番リストには最低 1 ポジション必要です
+status.bad_tempo:
+  en: "unreadable tempo %{text}: e.g. « 140 » or « 140 6 »"
+  fr: "tempo illisible %{text} : ex. « 140 » ou « 140 6 »"
+  ja: "テンポが読めません %{text}（例:「140」または「140 6」）"
+status.sample_info:
+  en: "%{bytes} bytes, %{rate} Hz"
+  fr: "%{bytes} octets, %{rate} Hz"
+  ja: "%{bytes} バイト、%{rate} Hz"
+status.natural_note:
+  en: ", original pitch at %{note}"
+  fr: ", hauteur d'origine en %{note}"
+  ja: "、元の音程は %{note}"
+status.truncated:
+  en: ", TRUNCATED to 128 KB"
+  fr: ", TRONQUÉ à 128 Ko"
+  ja: "、128 KB に切り詰めました"
+status.loaded:
+  en: "%{name}: %{info}"
+  fr: "%{name} : %{info}"
+  ja: "%{name}: %{info}"
+status.file_error:
+  en: "%{path}: %{error}"
+  fr: "%{path} : %{error}"
+  ja: "%{path}: %{error}"
+status.opened:
+  en: "%{path} opened"
+  fr: "%{path} ouvert"
+  ja: "%{path} を開きました"
+status.saved:
+  en: "saved: %{path}"
+  fr: "enregistré : %{path}"
+  ja: "保存しました: %{path}"
+status.write_error:
+  en: "cannot write %{path}: %{error}"
+  fr: "écriture de %{path} impossible : %{error}"
+  ja: "%{path} に書き込めません: %{error}"
+
+# --- Journal (keyboard side) -----------------------------------------------------------------
+journal.opened:
+  en: "opened %{path}"
+  fr: "ouverture de %{path}"
+  ja: "%{path} を開く"
+journal.saved:
+  en: "saved to %{path}"
+  fr: "enregistrement dans %{path}"
+  ja: "%{path} に保存"
+
+# --- Change descriptions (undo, journal) -----------------------------------------------------
+edit.cell:
+  en: "pattern %{pattern} row %{row} voice %{voice}: %{what}"
+  fr: "pattern %{pattern} ligne %{row} voie %{voice} : %{what}"
+  ja: "パターン %{pattern} %{row} 行 チャンネル %{voice}: %{what}"
+edit.cleared:
+  en: cleared
+  fr: effacé
+  ja: 消去
+edit.cell_cleared:
+  en: cell cleared
+  fr: cellule effacée
+  ja: セルを消去
+edit.typed:
+  en: typed
+  fr: saisie
+  ja: 入力
+edit.row_inserted:
+  en: row inserted
+  fr: ligne insérée
+  ja: 行を挿入
+edit.row_deleted:
+  en: row deleted
+  fr: ligne supprimée
+  ja: 行を削除
+edit.position_pattern:
+  en: "position %{position}: pattern %{pattern}"
+  fr: "position %{position} : pattern %{pattern}"
+  ja: "ポジション %{position}: パターン %{pattern}"
+edit.position_inserted:
+  en: "position %{position} inserted"
+  fr: "position %{position} insérée"
+  ja: "ポジション %{position} を挿入"
+edit.position_removed:
+  en: "position %{position} removed"
+  fr: "position %{position} retirée"
+  ja: "ポジション %{position} を削除"
+edit.sample_volume:
+  en: "sample %{sample}: volume %{volume}"
+  fr: "sample %{sample} : volume %{volume}"
+  ja: "サンプル %{sample}: 音量 %{volume}"
+edit.sample_finetune:
+  en: "sample %{sample}: finetune %{finetune}"
+  fr: "sample %{sample} : finetune %{finetune}"
+  ja: "サンプル %{sample}: ファインチューン %{finetune}"
+edit.sample_cleared:
+  en: "sample %{sample} cleared"
+  fr: "sample %{sample} vidé"
+  ja: "サンプル %{sample} を空に"
+edit.sample_renamed:
+  en: "sample %{sample} renamed « %{name} »"
+  fr: "sample %{sample} renommé « %{name} »"
+  ja: "サンプル %{sample} の名前を「%{name}」に変更"
+edit.sample_generated:
+  en: "sample %{sample}: %{waveform} generated"
+  fr: "sample %{sample} : %{waveform} généré"
+  ja: "サンプル %{sample}: %{waveform} を生成"
+edit.sample_loaded:
+  en: "sample %{sample}: %{name} loaded"
+  fr: "sample %{sample} : %{name} chargé"
+  ja: "サンプル %{sample}: %{name} を読み込み"
+edit.tempo:
+  en: "tempo %{bpm} BPM"
+  fr: "tempo %{bpm} BPM"
+  ja: "テンポ %{bpm} BPM"
+edit.tempo_speed:
+  en: "tempo %{bpm} BPM, speed %{speed}"
+  fr: "tempo %{bpm} BPM, vitesse %{speed}"
+  ja: "テンポ %{bpm} BPM、スピード %{speed}"
+edit.title:
+  en: "title « %{title} »"
+  fr: "titre « %{title} »"
+  ja: "タイトル「%{title}」"
+
+# --- Files and dialogs -----------------------------------------------------------------------
+file.default_name:
+  en: song.mod
+  fr: morceau.mod
+  ja: song.mod
+dialog.save_as:
+  en: Save as
+  fr: Enregistrer sous
+  ja: 名前を付けて保存
+dialog.open:
+  en: Open a module
+  fr: Ouvrir un module
+  ja: モジュールを開く
+dialog.title:
+  en: Song title
+  fr: Titre du morceau
+  ja: 曲のタイトル
+dialog.tempo:
+  en: "Tempo in BPM, then speed (e.g. 140 6)"
+  fr: "Tempo en BPM, puis vitesse (ex. 140 6)"
+  ja: "テンポ（BPM）とスピード（例: 140 6）"
+dialog.load_sample:
+  en: Load a sample
+  fr: Charger un sample
+  ja: サンプルを読み込む
+dialog.generate:
+  en: "Generate sample %{sample}"
+  fr: "Générer le sample %{sample}"
+  ja: "サンプル %{sample} を生成"
+dialog.rename:
+  en: "Name of sample %{sample}"
+  fr: "Nom du sample %{sample}"
+  ja: "サンプル %{sample} の名前"
+dialog.prompt_keys:
+  en: "Enter / Esc"
+  fr: "Entrée / Échap"
+  ja: "Enter / Esc"
+dialog.browser_keys:
+  en: "Enter, ← parent folder, Esc"
+  fr: "Entrée, ← dossier parent, Échap"
+  ja: "Enter、← 親フォルダ、Esc"
+dialog.help_keys:
+  en: "help: keys — Tab: effects · Esc: close"
+  fr: "aide : touches — Tab : effets · Échap : fermer"
+  ja: "ヘルプ: キー — Tab: エフェクト · Esc: 閉じる"
+dialog.help_effects:
+  en: "help: effects — Tab: keys · Esc: close"
+  fr: "aide : effets — Tab : touches · Échap : fermer"
+  ja: "ヘルプ: エフェクト — Tab: キー · Esc: 閉じる"
+
+# --- Screen ----------------------------------------------------------------------------------
+view.no_file:
+  en: (no file)
+  fr: (sans fichier)
+  ja: （ファイルなし）
+view.edit:
+  en: EDIT
+  fr: ÉDITION
+  ja: 編集
+view.listen:
+  en: listen
+  fr: écoute
+  ja: 試聴
+view.octave_sample:
+  en: "oct %{octave}  sample %{sample} %{name}"
+  fr: "oct %{octave}  sample %{sample} %{name}"
+  ja: "オクターブ %{octave}  サンプル %{sample} %{name}"
+view.tempo:
+  en: "speed %{speed} · %{bpm} BPM"
+  fr: "vit %{speed} · %{bpm} BPM"
+  ja: "スピード %{speed} · %{bpm} BPM"
+view.position:
+  en: "pos %{position}/%{last}"
+  fr: "pos %{position}/%{last}"
+  ja: "位置 %{position}/%{last}"
+view.pattern:
+  en: "pattern %{pattern}"
+  fr: "pattern %{pattern}"
+  ja: "パターン %{pattern}"
+view.voice:
+  en: "voice %{voice}"
+  fr: "voie %{voice}"
+  ja: "ch %{voice}"
+view.solo:
+  en: SOLO
+  fr: SOLO
+  ja: ソロ
+view.muted:
+  en: muted
+  fr: coupée
+  ja: ミュート
+view.orders:
+  en: orders (F6)
+  fr: ordre (F6)
+  ja: 順番 (F6)
+view.samples:
+  en: samples (F7)
+  fr: samples (F7)
+  ja: サンプル (F7)
+
+# --- Key hints (bottom line): "key action · key action …" ------------------------------------
+hint.edit:
+  en: "Space listen · piano-keys notes · 0-9/A-F sample/effect · Del clear · Enter play · F6 orders · F7 samples · ? help"
+  fr: "Espace écoute · clavier-piano notes · 0-9/A-F sample/effet · Suppr effacer · Entrée lire · F6 ordre · F7 samples · ? aide"
+  ja: "Space 試聴 · ピアノキー 音符 · 0-9/A-F サンプル/エフェクト · Del 消去 · Enter 再生 · F6 順番 · F7 サンプル · ? ヘルプ"
+hint.pattern:
+  en: "Space edit · Enter play · Ctrl+P loop · Ctrl+B tempo · Alt+1…8 mute · F6 orders · F7 samples · Ctrl+S save · ? help"
+  fr: "Espace éditer · Entrée lire · Ctrl+P boucle · Ctrl+B tempo · Alt+1…8 couper · F6 ordre · F7 samples · Ctrl+S enregistrer · ? aide"
+  ja: "Space 編集 · Enter 再生 · Ctrl+P ループ · Ctrl+B テンポ · Alt+1…8 ミュート · F6 順番 · F7 サンプル · Ctrl+S 保存 · ? ヘルプ"
+hint.orders:
+  en: "↑↓ position · ←→ pattern (creates the next one) · Ins add · Del remove · Enter edit · F5 pattern"
+  fr: "↑↓ position · ←→ pattern (crée le suivant) · Inser ajouter · Suppr retirer · Entrée éditer · F5 pattern"
+  ja: "↑↓ ポジション · ←→ パターン（次を作成） · Ins 追加 · Del 削除 · Enter 編集 · F5 パターン"
+hint.samples:
+  en: "↑↓ choose · g generate · l load WAV/AIFF · n rename · ←→ volume · [ ] finetune · p listen (Esc: silence) · Del clear · F5 pattern"
+  fr: "↑↓ choisir · g générer · l charger WAV/AIFF · n renommer · ←→ volume · [ ] finetune · p écouter (Échap : silence) · Suppr vider · F5 pattern"
+  ja: "↑↓ 選択 · g 生成 · l WAV/AIFF 読込 · n 名前変更 · ←→ 音量 · [ ] ファインチューン · p 試聴（Esc: 無音） · Del 空にする · F5 パターン"
+hint.effects:
+  en: "effects:"
+  fr: "effets :"
+  ja: "エフェクト:"
+hint.effect_help:
+  en: "? then Tab: all effects"
+  fr: "? puis Tab : tous les effets"
+  ja: "? → Tab: すべてのエフェクト"
+
+# --- Help page: keys -------------------------------------------------------------------------
+help.play.keys:
+  en: Enter
+  fr: Entrée
+  ja: Enter
+help.play.what:
+  en: play / stop the song from the position
+  fr: lire / arrêter le morceau depuis la position
+  ja: ポジションから曲を再生 / 停止
+help.loop.keys:
+  en: Ctrl+P
+  fr: Ctrl+P
+  ja: Ctrl+P
+help.loop.what:
+  en: loop the pattern
+  fr: lire le pattern en boucle
+  ja: パターンをループ再生
+help.stop.keys:
+  en: Esc
+  fr: Échap
+  ja: Esc
+help.stop.what:
+  en: stop playback and the notes being listened to
+  fr: arrêter la lecture et les notes écoutées
+  ja: 再生と試聴中の音を止める
+help.edit.keys:
+  en: Space
+  fr: Espace
+  ja: Space
+help.edit.what:
+  en: edit mode (otherwise notes only sound)
+  fr: mode édition (sinon, les notes ne font que sonner)
+  ja: 編集モード（オフのときは音が鳴るだけ）
+help.notes.keys:
+  en: bottom and top rows
+  fr: rangées du bas et du haut
+  ja: 下段と上段のキー
+help.notes.what:
+  en: notes (piano keys, two octaves, following the layout)
+  fr: notes (clavier piano, deux octaves, selon la disposition)
+  ja: 音符（ピアノ配置、2 オクターブ、キー配列に従う）
+help.octave.keys:
+  en: F1 / F2
+  fr: F1 / F2
+  ja: F1 / F2
+help.octave.what:
+  en: octave of the piano keys
+  fr: octave du clavier piano
+  ja: ピアノキーのオクターブ
+help.layout.keys:
+  en: F3
+  fr: F3
+  ja: F3
+help.layout.what:
+  en: "keyboard layout: QWERTY, AZERTY, QWERTZ"
+  fr: "disposition du clavier : QWERTY, AZERTY, QWERTZ"
+  ja: "キー配列: QWERTY、AZERTY、QWERTZ"
+help.sample.keys:
+  en: "[ ]"
+  fr: "[ ]"
+  ja: "[ ]"
+help.sample.what:
+  en: "current sample (in the samples panel: finetune)"
+  fr: "sample courant (dans les samples : finetune)"
+  ja: "現在のサンプル（サンプル欄ではファインチューン）"
+help.move.keys:
+  en: arrows, PgUp/PgDn
+  fr: flèches, PgPréc/PgSuiv
+  ja: 矢印、PgUp/PgDn
+help.move.what:
+  en: "move; Tab / Shift+Tab: next / previous voice"
+  fr: "se déplacer ; Tab / Maj+Tab : voie suivante / précédente"
+  ja: "移動。Tab / Shift+Tab: 次 / 前のチャンネル"
+help.digits.keys:
+  en: 0-9 A-F
+  fr: 0-9 A-F
+  ja: 0-9 A-F
+help.digits.what:
+  en: sample (decimal) and effect (hex), depending on the column
+  fr: sample (décimal) et effet (hexadécimal) selon la colonne
+  ja: 列に応じてサンプル（10 進）とエフェクト（16 進）
+help.clear.keys:
+  en: Del / Backspace
+  fr: Suppr / Retour arrière
+  ja: Del / Backspace
+help.clear.what:
+  en: clear the field / the cell
+  fr: effacer le champ / la cellule
+  ja: 欄 / セルを消去
+help.rows.keys:
+  en: Ins / Ctrl+K
+  fr: Inser / Ctrl+K
+  ja: Ins / Ctrl+K
+help.rows.what:
+  en: insert / delete a row in the voice
+  fr: insérer / supprimer une ligne dans la voie
+  ja: チャンネル内で行を挿入 / 削除
+help.mute.keys:
+  en: Alt+1 … Alt+8
+  fr: Alt+1 … Alt+8
+  ja: Alt+1 … Alt+8
+help.mute.what:
+  en: mute / unmute a voice
+  fr: couper / rétablir une voie
+  ja: チャンネルのミュート / 解除
+help.solo.keys:
+  en: Alt+S / Alt+0
+  fr: Alt+S / Alt+0
+  ja: Alt+S / Alt+0
+help.solo.what:
+  en: solo the cursor voice / reset the mix
+  fr: solo de la voie du curseur / mixage remis à zéro
+  ja: カーソルのチャンネルをソロ / ミックスをリセット
+help.volume.keys:
+  en: Alt+↑ / Alt+↓
+  fr: Alt+↑ / Alt+↓
+  ja: Alt+↑ / Alt+↓
+help.volume.what:
+  en: volume of the cursor voice
+  fr: volume de la voie du curseur
+  ja: カーソルのチャンネルの音量
+help.zones.keys:
+  en: F5 F6 F7
+  fr: F5 F6 F7
+  ja: F5 F6 F7
+help.zones.what:
+  en: "active zone: pattern, order list, samples"
+  fr: "zone active : pattern, liste d'ordre, samples"
+  ja: "操作エリア: パターン、順番リスト、サンプル"
+help.orders.keys:
+  en: "orders: ← → Ins Del Enter"
+  fr: "ordre : ← → Inser Suppr Entrée"
+  ja: "順番: ← → Ins Del Enter"
+help.orders.what:
+  en: change the pattern, add, remove, edit
+  fr: changer le pattern, ajouter, retirer, éditer
+  ja: パターン変更、追加、削除、編集
+help.samples.keys:
+  en: "samples: ← → l g n p Del"
+  fr: "samples : ← → l g n p Suppr"
+  ja: "サンプル: ← → l g n p Del"
+help.samples.what:
+  en: volume, load, generate, rename, listen, clear
+  fr: volume, charger, générer, renommer, écouter, vider
+  ja: 音量、読込、生成、名前変更、試聴、空にする
+help.files.keys:
+  en: Ctrl+S / Ctrl+W / Ctrl+O
+  fr: Ctrl+S / Ctrl+W / Ctrl+O
+  ja: Ctrl+S / Ctrl+W / Ctrl+O
+help.files.what:
+  en: save / save as / open
+  fr: enregistrer / enregistrer sous / ouvrir
+  ja: 保存 / 名前を付けて保存 / 開く
+help.undo.keys:
+  en: Ctrl+Z / Ctrl+Y
+  fr: Ctrl+Z / Ctrl+Y
+  ja: Ctrl+Z / Ctrl+Y
+help.undo.what:
+  en: undo / redo
+  fr: annuler / rétablir
+  ja: 取り消し / やり直し
+help.title.keys:
+  en: Ctrl+T
+  fr: Ctrl+T
+  ja: Ctrl+T
+help.title.what:
+  en: song title
+  fr: titre du morceau
+  ja: 曲のタイトル
+help.tempo.keys:
+  en: Ctrl+B
+  fr: Ctrl+B
+  ja: Ctrl+B
+help.tempo.what:
+  en: tempo (BPM) and speed at the start of the song
+  fr: tempo (BPM) et vitesse au début du morceau
+  ja: 曲の最初のテンポ（BPM）とスピード
+help.quit.keys:
+  en: Ctrl+Q
+  fr: Ctrl+Q
+  ja: Ctrl+Q
+help.quit.what:
+  en: quit (twice if the song is not saved)
+  fr: quitter (deux fois si le morceau n'est pas enregistré)
+  ja: 終了（未保存なら 2 回押す）

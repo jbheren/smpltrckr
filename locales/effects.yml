@@ -1,0 +1,379 @@
+_version: 2
+
+# --- What the effect under the cursor does, with its values ----------------------------------
+effect.slide_up:
+  en: "up by %{amount} per tick"
+  fr: "monte de %{amount} à chaque tick"
+  ja: "ティックごとに %{amount} 上げる"
+effect.slide_down:
+  en: "down by %{amount} per tick"
+  fr: "baisse de %{amount} à chaque tick"
+  ja: "ティックごとに %{amount} 下げる"
+effect.arpeggio:
+  en: "arpeggio: note, +%{x} and +%{y} semitones"
+  fr: "arpège : note, +%{x} et +%{y} demi-tons"
+  ja: "アルペジオ: 元の音、+%{x}、+%{y} 半音"
+effect.porta_up:
+  en: "pitch slides up by %{amount} per tick"
+  fr: "la hauteur monte de %{amount} à chaque tick"
+  ja: "ティックごとに音程を %{amount} 上げる"
+effect.porta_down:
+  en: "pitch slides down by %{amount} per tick"
+  fr: "la hauteur descend de %{amount} à chaque tick"
+  ja: "ティックごとに音程を %{amount} 下げる"
+effect.glide:
+  en: "glide to the written note, speed %{speed}"
+  fr: "glisse vers la note écrite, vitesse %{speed}"
+  ja: "書かれた音へポルタメント、速さ %{speed}"
+effect.glide_previous:
+  en: "glide to the written note, previous speed"
+  fr: "glisse vers la note écrite, vitesse précédente"
+  ja: "書かれた音へポルタメント（前回の速さ）"
+effect.vibrato:
+  en: "vibrato: speed %{speed}, depth %{depth}"
+  fr: "vibrato : vitesse %{speed}, profondeur %{depth}"
+  ja: "ビブラート: 速さ %{speed}、深さ %{depth}"
+effect.glide_slide:
+  en: "glide (previous speed) + volume %{slide}"
+  fr: "glissé (vitesse précédente) + volume qui %{slide}"
+  ja: "ポルタメント（前回の速さ）+ 音量を%{slide}"
+effect.vibrato_slide:
+  en: "vibrato (previous values) + volume %{slide}"
+  fr: "vibrato (valeurs précédentes) + volume qui %{slide}"
+  ja: "ビブラート（前回の値）+ 音量を%{slide}"
+effect.tremolo:
+  en: "tremolo: speed %{speed}, depth %{depth}"
+  fr: "trémolo : vitesse %{speed}, profondeur %{depth}"
+  ja: "トレモロ: 速さ %{speed}、深さ %{depth}"
+effect.ignored:
+  en: "%{name}: ignored by smpltrckr"
+  fr: "%{name} : ignoré par smpltrckr"
+  ja: "%{name}: smpltrckr では無視されます"
+effect.offset:
+  en: "start the sample at byte %{bytes}"
+  fr: "démarre le sample à l'octet %{bytes}"
+  ja: "サンプルを %{bytes} バイト目から再生"
+effect.volume_slide:
+  en: "volume slide: %{slide}"
+  fr: "glissement de volume : %{slide}"
+  ja: "音量スライド: %{slide}"
+effect.jump:
+  en: "jump to position %{position}"
+  fr: "saute à la position %{position}"
+  ja: "ポジション %{position} へジャンプ"
+effect.volume:
+  en: "volume %{volume} (of 64)"
+  fr: "volume %{volume} (sur 64)"
+  ja: "音量 %{volume}（最大 64）"
+effect.break:
+  en: "end of pattern: next position, row %{row}"
+  fr: "fin du pattern : position suivante, ligne %{row}"
+  ja: "パターン終了: 次のポジションの %{row} 行目へ"
+effect.fine_up:
+  en: "pitch up by %{amount}, once"
+  fr: "hauteur +%{amount}, une seule fois"
+  ja: "音程を %{amount} 上げる（1 回だけ）"
+effect.fine_down:
+  en: "pitch down by %{amount}, once"
+  fr: "hauteur -%{amount}, une seule fois"
+  ja: "音程を %{amount} 下げる（1 回だけ）"
+effect.vibrato_wave:
+  en: "vibrato waveform: %{wave}"
+  fr: "forme du vibrato : %{wave}"
+  ja: "ビブラートの波形: %{wave}"
+effect.tremolo_wave:
+  en: "tremolo waveform: %{wave}"
+  fr: "forme du trémolo : %{wave}"
+  ja: "トレモロの波形: %{wave}"
+effect.finetune:
+  en: "note finetune %{value}"
+  fr: "finetune de la note %{value}"
+  ja: "音のファインチューン %{value}"
+effect.loop_start:
+  en: "pattern loop start"
+  fr: "début de boucle de pattern"
+  ja: "パターンループの開始点"
+effect.loop:
+  en: "play again %{times} times from the loop start"
+  fr: "rejoue %{times} fois depuis le début de boucle"
+  ja: "ループ開始点から %{times} 回繰り返す"
+effect.retrigger:
+  en: "retrigger the note every %{ticks} ticks"
+  fr: "relance la note tous les %{ticks} ticks"
+  ja: "%{ticks} ティックごとに音を鳴らし直す"
+effect.fine_volume_up:
+  en: "volume +%{amount}, once"
+  fr: "volume +%{amount}, une seule fois"
+  ja: "音量 +%{amount}（1 回だけ）"
+effect.fine_volume_down:
+  en: "volume -%{amount}, once"
+  fr: "volume -%{amount}, une seule fois"
+  ja: "音量 -%{amount}（1 回だけ）"
+effect.cut:
+  en: "cut the note at tick %{tick}"
+  fr: "coupe la note au tick %{tick}"
+  ja: "%{tick} ティック目で音を切る"
+effect.delay:
+  en: "delay the note to tick %{tick}"
+  fr: "retarde la note au tick %{tick}"
+  ja: "%{tick} ティック目まで音を遅らせる"
+effect.repeat_row:
+  en: "repeat the row %{times} times"
+  fr: "répète la ligne %{times} fois"
+  ja: "行を %{times} 回繰り返す"
+effect.stop:
+  en: "stop the song"
+  fr: "arrête le morceau"
+  ja: "曲を止める"
+effect.speed:
+  en: "speed %{speed} ticks per row"
+  fr: "vitesse %{speed} ticks par ligne"
+  ja: "スピード: 1 行 %{speed} ティック"
+effect.tempo:
+  en: "tempo %{bpm} BPM"
+  fr: "tempo %{bpm} BPM"
+  ja: "テンポ %{bpm} BPM"
+effect.wave.sine:
+  en: sine
+  fr: sinus
+  ja: サイン波
+effect.wave.ramp:
+  en: ramp
+  fr: rampe
+  ja: のこぎり波
+effect.wave.square:
+  en: square
+  fr: carré
+  ja: 矩形波
+effect.wave.no_reset:
+  en: "%{wave}, not reset on new notes"
+  fr: "%{wave}, sans réinitialisation aux nouvelles notes"
+  ja: "%{wave}（新しい音でリセットしない）"
+
+# --- Short names for the palette -------------------------------------------------------------
+effect.name.0:
+  en: arpeggio
+  fr: arpège
+  ja: アルペジオ
+effect.name.1:
+  en: pitch up
+  fr: monte
+  ja: 音程↑
+effect.name.2:
+  en: pitch down
+  fr: descend
+  ja: 音程↓
+effect.name.3:
+  en: glide
+  fr: glissé
+  ja: ポルタメント
+effect.name.4:
+  en: vibrato
+  fr: vibrato
+  ja: ビブラート
+effect.name.5:
+  en: glide+vol
+  fr: glissé+vol
+  ja: ポルタ+音量
+effect.name.6:
+  en: vibrato+vol
+  fr: vibrato+vol
+  ja: ビブラート+音量
+effect.name.7:
+  en: tremolo
+  fr: trémolo
+  ja: トレモロ
+effect.name.8:
+  en: panning
+  fr: panoramique
+  ja: パン
+effect.name.9:
+  en: offset
+  fr: départ
+  ja: 再生位置
+effect.name.A:
+  en: vol slide
+  fr: fondu
+  ja: 音量スライド
+effect.name.B:
+  en: jump
+  fr: saut
+  ja: ジャンプ
+effect.name.C:
+  en: volume
+  fr: volume
+  ja: 音量
+effect.name.D:
+  en: break
+  fr: fin pattern
+  ja: パターン終了
+effect.name.E:
+  en: extended…
+  fr: étendus…
+  ja: 拡張…
+effect.name.F:
+  en: speed/tempo
+  fr: vitesse/tempo
+  ja: スピード/テンポ
+effect.name.E0:
+  en: Amiga filter
+  fr: filtre Amiga
+  ja: Amiga フィルタ
+effect.name.E1:
+  en: fine up
+  fr: monte fin
+  ja: 微調整↑
+effect.name.E2:
+  en: fine down
+  fr: descend fin
+  ja: 微調整↓
+effect.name.E3:
+  en: glissando
+  fr: glissando
+  ja: グリッサンド
+effect.name.E4:
+  en: vib. wave
+  fr: forme vib.
+  ja: ビブ波形
+effect.name.E5:
+  en: finetune
+  fr: finetune
+  ja: ファインチューン
+effect.name.E6:
+  en: loop
+  fr: boucle
+  ja: ループ
+effect.name.E7:
+  en: trem. wave
+  fr: forme trém.
+  ja: トレモロ波形
+effect.name.E9:
+  en: retrigger
+  fr: relance
+  ja: リトリガー
+effect.name.EA:
+  en: vol +
+  fr: vol +
+  ja: 音量+
+effect.name.EB:
+  en: vol -
+  fr: vol -
+  ja: 音量-
+effect.name.EC:
+  en: cut
+  fr: coupe
+  ja: カット
+effect.name.ED:
+  en: delay
+  fr: retard
+  ja: ディレイ
+effect.name.EE:
+  en: repeat row
+  fr: répète ligne
+  ja: 行リピート
+
+# --- Help page: effects ("code  description") ------------------------------------------------
+effect.help.0:
+  en: "0xy  arpeggio: note, +x, +y semitones on every tick (chords: 037 minor, 047 major)"
+  fr: "0xy  arpège : note, +x, +y demi-tons à chaque tick (accords : 037 mineur, 047 majeur)"
+  ja: "0xy  アルペジオ: ティックごとに元の音、+x、+y 半音（和音: 037 短、047 長）"
+effect.help.1:
+  en: "1xx  pitch slides up by xx per tick"
+  fr: "1xx  la hauteur monte de xx à chaque tick"
+  ja: "1xx  ティックごとに音程を xx 上げる"
+effect.help.2:
+  en: "2xx  pitch slides down by xx per tick"
+  fr: "2xx  la hauteur descend de xx à chaque tick"
+  ja: "2xx  ティックごとに音程を xx 下げる"
+effect.help.3:
+  en: "3xx  glide to the written note at speed xx (the note does not restart)"
+  fr: "3xx  glisse vers la note écrite, vitesse xx (la note ne redémarre pas)"
+  ja: "3xx  書かれた音へ速さ xx でポルタメント（音は鳴り直さない）"
+effect.help.4:
+  en: "4xy  vibrato: speed x, depth y"
+  fr: "4xy  vibrato : vitesse x, profondeur y"
+  ja: "4xy  ビブラート: 速さ x、深さ y"
+effect.help.5:
+  en: "5xy  glide (3) + volume slide (A)"
+  fr: "5xy  glissé (3) + glissement de volume (A)"
+  ja: "5xy  ポルタメント（3）+ 音量スライド（A）"
+effect.help.6:
+  en: "6xy  vibrato (4) + volume slide (A)"
+  fr: "6xy  vibrato (4) + glissement de volume (A)"
+  ja: "6xy  ビブラート（4）+ 音量スライド（A）"
+effect.help.7:
+  en: "7xy  tremolo: speed x, depth y"
+  fr: "7xy  trémolo : vitesse x, profondeur y"
+  ja: "7xy  トレモロ: 速さ x、深さ y"
+effect.help.9:
+  en: "9xx  start the sample at xx × 256 bytes"
+  fr: "9xx  démarre le sample à xx × 256 octets"
+  ja: "9xx  サンプルを xx × 256 バイト目から再生"
+effect.help.A:
+  en: "Axy  volume slide on every tick: +x, or -y when x = 0 (fades)"
+  fr: "Axy  glissement de volume à chaque tick : +x, ou -y si x = 0 (fondus)"
+  ja: "Axy  ティックごとの音量スライド: +x、x = 0 なら -y（フェード）"
+effect.help.B:
+  en: "Bxx  jump to position xx of the order list"
+  fr: "Bxx  saute à la position xx de la liste d'ordre"
+  ja: "Bxx  順番リストのポジション xx へジャンプ"
+effect.help.C:
+  en: "Cxx  volume, 00 to 40 in hex (= 0 to 64)"
+  fr: "Cxx  volume, de 00 à 40 en hexadécimal (= 0 à 64)"
+  ja: "Cxx  音量、16 進で 00〜40（= 0〜64）"
+effect.help.D:
+  en: "Dxy  end of pattern: next position, row xy (decimal)"
+  fr: "Dxy  fin du pattern : position suivante, ligne xy (décimal)"
+  ja: "Dxy  パターン終了: 次のポジションの xy 行目（10 進）"
+effect.help.E1:
+  en: "E1x  pitch up by x, once"
+  fr: "E1x  hauteur +x, une seule fois"
+  ja: "E1x  音程を x 上げる（1 回だけ）"
+effect.help.E2:
+  en: "E2x  pitch down by x, once"
+  fr: "E2x  hauteur -x, une seule fois"
+  ja: "E2x  音程を x 下げる（1 回だけ）"
+effect.help.E4:
+  en: "E4x  vibrato waveform: 0 sine, 1 ramp, 2 square (+4: no reset)"
+  fr: "E4x  forme du vibrato : 0 sinus, 1 rampe, 2 carré (+4 : sans réinitialiser)"
+  ja: "E4x  ビブラート波形: 0 サイン、1 のこぎり、2 矩形（+4: リセットしない）"
+effect.help.E5:
+  en: "E5x  note finetune (0 to 7, then 8 to F = -8 to -1)"
+  fr: "E5x  finetune de la note (0 à 7, puis 8 à F = -8 à -1)"
+  ja: "E5x  音のファインチューン（0〜7、8〜F は -8〜-1）"
+effect.help.E6:
+  en: "E6x  E60 marks the loop start; E6x plays it again x times"
+  fr: "E6x  E60 marque le début de boucle ; E6x la rejoue x fois"
+  ja: "E6x  E60 でループ開始点、E6x で x 回繰り返す"
+effect.help.E7:
+  en: "E7x  tremolo waveform (like E4x)"
+  fr: "E7x  forme du trémolo (comme E4x)"
+  ja: "E7x  トレモロ波形（E4x と同じ）"
+effect.help.E9:
+  en: "E9x  retrigger the note every x ticks"
+  fr: "E9x  relance la note tous les x ticks"
+  ja: "E9x  x ティックごとに音を鳴らし直す"
+effect.help.EA:
+  en: "EAx  volume +x, once"
+  fr: "EAx  volume +x, une seule fois"
+  ja: "EAx  音量 +x（1 回だけ）"
+effect.help.EB:
+  en: "EBx  volume -x, once"
+  fr: "EBx  volume -x, une seule fois"
+  ja: "EBx  音量 -x（1 回だけ）"
+effect.help.EC:
+  en: "ECx  cut the note at tick x (short, dry notes)"
+  fr: "ECx  coupe la note au tick x (notes courtes et sèches)"
+  ja: "ECx  x ティック目で音を切る（短く歯切れよく）"
+effect.help.ED:
+  en: "EDx  delay the note to tick x"
+  fr: "EDx  retarde la note au tick x"
+  ja: "EDx  x ティック目まで音を遅らせる"
+effect.help.EE:
+  en: "EEx  repeat the row x times"
+  fr: "EEx  répète la ligne x fois"
+  ja: "EEx  行を x 回繰り返す"
+effect.help.F:
+  en: "Fxx  speed (01 to 1F) or tempo in BPM (20 to FF); F00 stops the song"
+  fr: "Fxx  vitesse (01 à 1F) ou tempo en BPM (20 à FF) ; F00 arrête le morceau"
+  ja: "Fxx  スピード（01〜1F）またはテンポ BPM（20〜FF）。F00 で曲を停止"

@@ -1,4 +1,4 @@
-//! Affiche, tick par tick, la période et le volume d'une voie : periods module.mod voie début_s fin_s
+//! Prints a voice's period and volume, tick by tick: periods module.mod voice start_s end_s
 use std::sync::Arc;
 
 use smpltrckr::replayer::Replayer;
@@ -21,7 +21,7 @@ fn main() {
         if frame as f64 >= from * rate as f64 && state != last {
             let (pos, row) = r.position();
             println!(
-                "{:7.3} s  pos {pos:3} ligne {row:2}  sample {:2} période {:4} volume {:2}",
+                "{:7.3} s  pos {pos:3} row {row:2}  sample {:2} period {:4} volume {:2}",
                 frame as f64 / rate as f64,
                 state.0,
                 state.1,

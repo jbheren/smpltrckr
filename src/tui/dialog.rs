@@ -1,10 +1,10 @@
-//! Fenêtres de dialogue : navigateur de fichiers, saisie de texte, choix dans une liste, aide.
+//! Dialogs: file browser, text prompt, pick-from-a-list, help.
 
 use std::path::{Path, PathBuf};
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-/// À quoi sert la réponse du dialogue.
+/// What the dialog's answer is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Purpose {
     OpenSong,
@@ -20,10 +20,11 @@ pub enum Dialog {
     Browser(Browser),
     Prompt(Prompt),
     Choice(Choice),
-    Help,
+    /// Help page: 0 = keys, 1 = effects.
+    Help(usize),
 }
 
-/// Réponse d'un dialogue terminé.
+/// Answer of a finished dialog.
 pub enum Answer {
     Path(PathBuf),
     Text(String),
@@ -31,7 +32,7 @@ pub enum Answer {
 }
 
 pub enum Outcome {
-    /// Le dialogue reste ouvert.
+    /// The dialog stays open.
     Pending,
     Cancel,
     Done(Purpose, Answer),
@@ -43,7 +44,14 @@ impl Dialog {
             return Outcome::Cancel;
         }
         match self {
-            Dialog::Help => Outcome::Cancel,
+            // Tab or ← → flips between the two help pages; any other key closes the help.
+            Dialog::Help(page) => match key.code {
+                KeyCode::Tab | KeyCode::BackTab | KeyCode::Left | KeyCode::Right => {
+                    *page = 1 - *page;
+                    Outcome::Pending
+                }
+                _ => Outcome::Cancel,
+            },
             Dialog::Browser(b) => b.handle(key),
             Dialog::Prompt(p) => p.handle(key),
             Dialog::Choice(c) => c.handle(key),
@@ -58,7 +66,7 @@ pub struct Entry {
 
 pub struct Browser {
     pub purpose: Purpose,
-    pub title: &'static str,
+    pub title: String,
     pub dir: PathBuf,
     pub entries: Vec<Entry>,
     pub selected: usize,
@@ -68,13 +76,13 @@ pub struct Browser {
 impl Browser {
     pub fn new(
         purpose: Purpose,
-        title: &'static str,
+        title: impl Into<String>,
         dir: &Path,
         extensions: &'static [&'static str],
     ) -> Self {
         let mut browser = Self {
             purpose,
-            title,
+            title: title.into(),
             dir: dir.to_path_buf(),
             entries: Vec::new(),
             selected: 0,
@@ -84,7 +92,7 @@ impl Browser {
         browser
     }
 
-    /// Relit le dossier : « .. », puis les sous-dossiers, puis les fichiers aux bonnes extensions.
+    /// Reads the folder again: '..', then subfolders, then files with the right extensions.
     fn refresh(&mut self) {
         let mut dirs = Vec::new();
         let mut files = Vec::new();
@@ -161,7 +169,7 @@ impl Browser {
         };
         self.selected = 0;
         self.refresh();
-        // En remontant, on se replace sur le dossier d'où l'on vient.
+        // When going up, land back on the folder we came from.
         if name == ".."
             && let Some(prev) = previous
         {

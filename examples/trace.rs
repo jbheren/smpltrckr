@@ -1,10 +1,10 @@
-//! Trace l'enchaînement des positions jouées par le replayer : trace module.mod
+//! Traces the sequence of positions played by the replayer: trace module.mod
 use std::sync::Arc;
 
 use smpltrckr::replayer::Replayer;
 
 fn main() {
-    let path = std::env::args().nth(1).expect("usage : trace module.mod");
+    let path = std::env::args().nth(1).expect("usage: trace module.mod");
     let song = smpltrckr::format::protracker::read(&std::fs::read(path).unwrap()).unwrap();
     let mut r = Replayer::new(Arc::new(song), 1000);
     let (mut last, mut frames, mut buf) = (usize::MAX, 0usize, [0.0f32; 2]);
@@ -16,7 +16,7 @@ fn main() {
                 "{position}@{:.1}s{}",
                 frames as f64 / 1000.0,
                 if row > 0 {
-                    format!("(ligne {row})")
+                    format!("(row {row})")
                 } else {
                     String::new()
                 }
@@ -28,7 +28,7 @@ fn main() {
     }
     println!("{}", line.join(" "));
     println!(
-        "fin à {:.2} s, position {:?}",
+        "end at {:.2} s, position {:?}",
         frames as f64 / 1000.0,
         r.position()
     );

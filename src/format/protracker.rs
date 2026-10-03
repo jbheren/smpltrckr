@@ -1,17 +1,18 @@
-//! Lecture et écriture du format `.mod` (Soundtracker 15 samples, ProTracker et variantes à N voies).
+//! Reading and writing `.mod` files (15-sample Soundtracker, ProTracker and N-voice flavours).
 //!
-//! Disposition du fichier :
-//! titre (20) · samples (15 ou 31 × 30) · longueur (1) · reprise (1) · ordre (128)
-//! · signature (4, absente en 15 samples) · patterns (64 lignes × N voies × 4 octets)
-//! · données des samples · octets éventuels en fin de fichier.
+//! File layout:
+//! title (20) · samples (15 or 31 × 30) · length (1) · restart (1) · orders (128)
+//! · tag (4, missing with 15 samples) · patterns (64 rows × N voices × 4 bytes)
+//! · sample data · trailing bytes, if any.
 
 use anyhow::{Context, bail, ensure};
+use rust_i18n::t;
 
 use crate::song::{Cell, ModKind, Pattern, Sample, Song};
 
 const ROWS: usize = 64;
 
-/// Nombre de voies annoncé par une signature, si elle est reconnue.
+/// Voice count announced by a tag, when the tag is known.
 fn channels_for_tag(tag: &[u8; 4]) -> Option<usize> {
     let digit = |b: u8| b.is_ascii_digit().then(|| (b - b'0') as usize);
     match tag {
@@ -25,7 +26,7 @@ fn channels_for_tag(tag: &[u8; 4]) -> Option<usize> {
     .filter(|&n| (1..=32).contains(&n))
 }
 
-/// Curseur de lecture qui signale clairement un fichier trop court.
+/// Read cursor that clearly reports a file that is too short.
 struct Reader<'a> {
     data: &'a [u8],
     pos: usize,
@@ -36,8 +37,7 @@ impl<'a> Reader<'a> {
         let end = self.pos + n;
         ensure!(
             end <= self.data.len(),
-            "fichier tronqué à l'octet {}",
-            self.data.len()
+            t!("mod.truncated", offset = self.data.len())
         );
         let bytes = &self.data[self.pos..end];
         self.pos = end;
@@ -62,13 +62,10 @@ impl<'a> Reader<'a> {
 }
 
 pub fn read(data: &[u8]) -> anyhow::Result<Song> {
-    ensure!(
-        !data.starts_with(b"PP20"),
-        "module compressé avec PowerPacker, non pris en charge (le décompresser d'abord)"
-    );
+    ensure!(!data.starts_with(b"PP20"), t!("mod.powerpacker"),);
     let tag: Option<[u8; 4]> = data.get(1080..1084).map(|t| t.try_into().unwrap());
     let (kind, channels, sample_count) = match tag {
-        Some(tag) if tag == *b"FLT8" => bail!("variante FLT8 non prise en charge"),
+        Some(tag) if tag == *b"FLT8" => bail!(t!("mod.flt8")),
         Some(tag) => match channels_for_tag(&tag) {
             Some(channels) => (ModKind::Tagged(tag), channels, 31),
             None => (ModKind::Soundtracker15, 4, 15),
@@ -100,12 +97,12 @@ pub fn read(data: &[u8]) -> anyhow::Result<Song> {
     let pattern_size = ROWS * channels * 4;
     let pattern_count = pattern_count(&orders, song_length, r.remaining(), pattern_size);
     if kind == ModKind::Soundtracker15 {
-        // Pas de signature : on vérifie que l'en-tête est plausible avant d'y croire.
+        // No tag: check that the header looks sane before trusting it.
         ensure!(
             (1..=128).contains(&song_length)
                 && pattern_count <= 64
                 && samples.iter().all(|s| s.volume <= 64),
-            "format non reconnu (ni signature ProTracker, ni en-tête Soundtracker valide)"
+            t!("mod.unknown_format"),
         );
     }
 
@@ -121,7 +118,7 @@ pub fn read(data: &[u8]) -> anyhow::Result<Song> {
         patterns.push(Pattern { rows });
     }
 
-    // Données des samples. Un fichier tronqué garde ce qui est disponible.
+    // Sample data. A truncated file keeps whatever is there.
     for sample in &mut samples {
         let len = (sample.length_words as usize * 2).min(r.remaining());
         sample.data = r.take(len)?.iter().map(|&b| b as i8).collect();
@@ -141,10 +138,9 @@ pub fn read(data: &[u8]) -> anyhow::Result<Song> {
     })
 }
 
-/// Nombre de patterns stockés. ProTracker prend le plus grand numéro de toute la liste
-/// d'ordre (128 positions). Certains fichiers ont des valeurs parasites au-delà de la
-/// longueur du morceau : dans ce cas, si ça dépasse la taille du fichier, on se limite
-/// aux positions jouées.
+/// Number of stored patterns. ProTracker takes the highest number of the whole order list
+/// (128 positions). Some files carry junk past the song length: in that case, if it does
+/// not fit in the file, only the played positions count.
 fn pattern_count(
     orders: &[u8; 128],
     song_length: u8,
@@ -210,7 +206,7 @@ pub fn write(song: &Song) -> Vec<u8> {
 mod tests {
     use super::*;
 
-    /// Un petit module M.K. construit à la main : 1 sample, 2 patterns.
+    /// A small hand-made M.K. module: 1 sample, 2 patterns.
     fn tiny_mod() -> Vec<u8> {
         tiny_mod_with(b"M.K.", 4)
     }
@@ -222,7 +218,7 @@ mod tests {
             let mut h = [0u8; 30];
             if i == 0 {
                 h[..5].copy_from_slice(b"chip!");
-                h[22..24].copy_from_slice(&4u16.to_be_bytes()); // 8 octets
+                h[22..24].copy_from_slice(&4u16.to_be_bytes()); // 8 bytes
                 h[24] = 0x0F; // finetune -1
                 h[25] = 64;
             }

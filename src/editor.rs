@@ -1,30 +1,31 @@
-//! Éditeur : toutes les modifications d'un morceau passent par ici, qu'elles viennent du
-//! clavier ou de l'agent. Chaque modification s'annule, se rétablit et laisse une trace
-//! dans le journal.
+//! Editor: every change to a song goes through here, whether it comes from the keyboard or
+//! from the agent. Each change can be undone and redone, and leaves a line in the journal
+//! (the ship's log, if you will).
 //!
-//! Une modification est une liste de remplacements (`Change`). Appliquer un remplacement
-//! renvoie le remplacement inverse : l'annulation n'a pas besoin de copier tout le morceau.
+//! A change is a list of replacements (`Change`). Applying one returns its inverse, so undo
+//! never needs to copy the whole song.
 
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use anyhow::ensure;
+use rust_i18n::t;
 
 use crate::replayer::Mixer;
 use crate::song::{Pattern, Sample, Song};
 
-/// Qui a demandé la modification.
+/// Who asked for the change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Origin {
     Keyboard,
     Agent,
 }
 
-/// Un remplacement élémentaire dans le morceau.
+/// One elementary replacement in the song.
 #[derive(Debug, Clone)]
 pub enum Change {
     Title([u8; 20]),
-    /// Remplace un pattern, en ajoute un (à la fin) ou retire le dernier (`None`).
+    /// Replaces a pattern, appends one (at the end) or removes the last one (`None`).
     Pattern(usize, Option<Pattern>),
     Orders {
         length: u8,
@@ -34,7 +35,7 @@ pub enum Change {
 }
 
 impl Change {
-    /// Applique le remplacement et renvoie celui qui l'annule.
+    /// Applies the replacement and returns the one that undoes it.
     fn apply(self, song: &mut Song) -> Change {
         match self {
             Change::Title(title) => Change::Title(std::mem::replace(&mut song.title, title)),
@@ -63,19 +64,19 @@ impl Change {
     }
 }
 
-/// Une modification complète, telle qu'elle apparaît dans l'historique.
+/// A whole change, as it shows up in the history.
 #[derive(Debug, Clone)]
 struct Edit {
     description: String,
     changes: Vec<Change>,
 }
 
-/// Une ligne du journal.
+/// One line of the journal.
 #[derive(Debug, Clone)]
 pub struct JournalEntry {
     pub time: SystemTime,
     pub origin: Origin,
-    /// « modif », « annulation » ou « rétablissement », suivi de la description.
+    /// "edit", "undo" or "redo" (localized), followed by the description.
     pub text: String,
 }
 
@@ -84,7 +85,7 @@ pub struct Editor {
     undo: Vec<Edit>,
     redo: Vec<Edit>,
     journal: Vec<JournalEntry>,
-    /// Mixage de la session (non enregistré dans le `.mod`).
+    /// Session mix (not saved in the `.mod`).
     pub mixer: Mixer,
 }
 
@@ -110,14 +111,14 @@ impl Editor {
         &self.journal
     }
 
-    /// Applique une modification. Une liste vide ne fait rien et ne laisse pas de trace.
+    /// Applies a change. An empty list does nothing and leaves no trace.
     pub fn apply(&mut self, origin: Origin, description: impl Into<String>, changes: Vec<Change>) {
         if changes.is_empty() {
             return;
         }
         let description = description.into();
         let inverse = self.apply_all(changes);
-        self.log(origin, format!("modif : {description}"));
+        self.log(origin, t!("journal.edit", what = description).into_owned());
         self.undo.push(Edit {
             description,
             changes: inverse,
@@ -128,11 +129,14 @@ impl Editor {
         self.redo.clear();
     }
 
-    /// Annule la dernière modification et renvoie sa description.
+    /// Undoes the last change and returns its description.
     pub fn undo(&mut self, origin: Origin) -> Option<String> {
         let edit = self.undo.pop()?;
         let inverse = self.apply_all(edit.changes);
-        self.log(origin, format!("annulation : {}", edit.description));
+        self.log(
+            origin,
+            t!("journal.undo", what = edit.description).into_owned(),
+        );
         let description = edit.description.clone();
         self.redo.push(Edit {
             changes: inverse,
@@ -141,11 +145,14 @@ impl Editor {
         Some(description)
     }
 
-    /// Rétablit la dernière modification annulée et renvoie sa description.
+    /// Redoes the last undone change and returns its description.
     pub fn redo(&mut self, origin: Origin) -> Option<String> {
         let edit = self.redo.pop()?;
         let inverse = self.apply_all(edit.changes);
-        self.log(origin, format!("rétablissement : {}", edit.description));
+        self.log(
+            origin,
+            t!("journal.redo", what = edit.description).into_owned(),
+        );
         let description = edit.description.clone();
         self.undo.push(Edit {
             changes: inverse,
@@ -154,7 +161,7 @@ impl Editor {
         Some(description)
     }
 
-    /// Remplace tout le morceau (nouveau, ouverture de fichier) : l'historique repart de zéro.
+    /// Replaces the whole song (new song, file opened): the history starts over.
     pub fn replace_song(&mut self, origin: Origin, song: Song, description: impl Into<String>) {
         self.mixer = Mixer::new(song.channels);
         self.song = song;
@@ -171,7 +178,7 @@ impl Editor {
         });
     }
 
-    /// Applique les remplacements dans l'ordre et renvoie leurs inverses, dans l'ordre inverse.
+    /// Applies the replacements in order and returns their inverses, in reverse order.
     fn apply_all(&mut self, changes: Vec<Change>) -> Vec<Change> {
         let mut inverse: Vec<Change> = changes
             .into_iter()
@@ -181,37 +188,35 @@ impl Editor {
         inverse
     }
 
-    // --- Constructeurs de modifications, avec vérifications ----------------------------------
+    // --- Change builders, with sanity checks ------------------------------------------------
 
-    /// Remplacement d'un pattern existant, ou ajout d'un pattern juste après le dernier.
+    /// Replaces an existing pattern, or appends one right after the last.
     pub fn set_pattern(&self, index: usize, pattern: Pattern) -> anyhow::Result<Change> {
+        let count = self.song.patterns.len();
         ensure!(
-            index <= self.song.patterns.len(),
-            "pattern {index} : on ne peut créer que le pattern suivant ({})",
-            self.song.patterns.len()
+            index <= count,
+            t!("editor.next_pattern_only", pattern = index, next = count)
         );
-        ensure!(index < 128, "128 patterns au plus");
+        ensure!(index < 128, t!("editor.too_many_patterns"));
+        let channels = self.song.channels;
         ensure!(
-            pattern.rows.len() == 64 && pattern.rows.iter().all(|r| r.len() == self.song.channels),
-            "un pattern de .mod fait 64 lignes de {} voies",
-            self.song.channels
+            pattern.rows.len() == 64 && pattern.rows.iter().all(|r| r.len() == channels),
+            t!("editor.pattern_shape", voices = channels)
         );
         Ok(Change::Pattern(index, Some(pattern)))
     }
 
     pub fn set_orders(&self, orders: &[u8]) -> anyhow::Result<Change> {
-        ensure!(
-            (1..=128).contains(&orders.len()),
-            "la liste d'ordre compte de 1 à 128 positions"
-        );
+        ensure!((1..=128).contains(&orders.len()), t!("editor.order_length"));
         if let Some(&p) = orders
             .iter()
             .find(|&&p| p as usize >= self.song.patterns.len())
         {
-            anyhow::bail!(
-                "pattern {p} inexistant (le morceau en a {})",
-                self.song.patterns.len()
-            );
+            anyhow::bail!(t!(
+                "editor.no_such_pattern",
+                pattern = p,
+                count = self.song.patterns.len()
+            ));
         }
         let mut all = [0u8; 128];
         all[..orders.len()].copy_from_slice(orders);
@@ -221,8 +226,8 @@ impl Editor {
         })
     }
 
-    /// Tempo (BPM) et vitesse au début du morceau : les Fxx de la ligne 00 du premier
-    /// pattern joué, ou 125 BPM et vitesse 6 par défaut.
+    /// Tempo (BPM) and speed at the start of the song: the Fxx of row 00 of the first pattern
+    /// played, or 125 BPM and speed 6 by default.
     pub fn start_tempo(&self) -> (u8, u8) {
         let song = &self.song;
         let (mut bpm, mut speed) = (125, 6);
@@ -242,14 +247,14 @@ impl Editor {
         (bpm, speed)
     }
 
-    /// Fixe le tempo et/ou la vitesse au début du morceau : met à jour les Fxx de la ligne 00
-    /// du premier pattern joué, ou les écrit dans la colonne d'effet d'une voie libre.
+    /// Sets the tempo and/or speed at the start of the song: updates the Fxx of row 00 of the
+    /// first pattern played, or writes them in the effect column of a free voice.
     pub fn set_start_tempo(&self, bpm: Option<u8>, speed: Option<u8>) -> anyhow::Result<Change> {
         if let Some(b) = bpm {
-            ensure!(b >= 0x20, "tempo de 32 à 255 BPM");
+            ensure!(b >= 0x20, t!("editor.tempo_range"));
         }
         if let Some(s) = speed {
-            ensure!((1..=0x1F).contains(&s), "vitesse de 1 à 31");
+            ensure!((1..=0x1F).contains(&s), t!("editor.speed_range"));
         }
         let index = self.song.orders[0] as usize;
         let mut pattern = self.song.patterns[index].clone();
@@ -264,9 +269,7 @@ impl Editor {
                 .position(|c| c.effect == 0xF && is_kind(c.param))
                 .or_else(|| row.iter().position(|c| c.effect == 0 && c.param == 0));
             let Some(v) = slot else {
-                anyhow::bail!(
-                    "ligne 00 du pattern {index:02} : aucune colonne d'effet libre pour Fxx"
-                );
+                anyhow::bail!(t!("editor.no_free_effect", pattern = format!("{index:02}")));
             };
             (row[v].effect, row[v].param) = (0xF, value);
         }
@@ -274,23 +277,23 @@ impl Editor {
     }
 
     pub fn set_sample(&self, number: usize, sample: Sample) -> anyhow::Result<Change> {
+        let count = self.song.samples.len();
         ensure!(
-            (1..=self.song.samples.len()).contains(&number),
-            "sample {number} inexistant (1 à {})",
-            self.song.samples.len()
+            (1..=count).contains(&number),
+            t!("editor.no_such_sample", sample = number, count = count)
         );
         Ok(Change::Sample(number - 1, Box::new(sample)))
     }
 }
 
-/// Fichier du journal, à côté du morceau : `morceau.mod.journal.txt`.
+/// Journal file, next to the song: `song.mod.journal.txt`.
 pub fn journal_path(path: &Path) -> PathBuf {
     let mut name = path.as_os_str().to_owned();
     name.push(".journal.txt");
     PathBuf::from(name)
 }
 
-/// Le journal en texte, une ligne par entrée.
+/// The journal as text, one line per entry.
 pub fn journal_text(editor: &Editor) -> String {
     editor
         .journal()
@@ -301,18 +304,18 @@ pub fn journal_text(editor: &Editor) -> String {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs());
             let who = match e.origin {
-                Origin::Agent => "agent",
-                Origin::Keyboard => "clavier",
+                Origin::Agent => t!("journal.agent"),
+                Origin::Keyboard => t!("journal.keyboard"),
             };
             format!("{} {who:7} {}\n", format_time(secs), e.text)
         })
         .collect()
 }
 
-/// Heure UTC `AAAA-MM-JJ hh:mm:ss UTC`, sans dépendance de date.
+/// UTC time `YYYY-MM-DD hh:mm:ss UTC`, without a date crate.
 fn format_time(secs: u64) -> String {
     let (days, rest) = (secs / 86400, secs % 86400);
-    // Jours depuis 1970 → date civile (algorithme de Howard Hinnant).
+    // Days since 1970 → civil date (Howard Hinnant's algorithm).
     let z = days as i64 + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;
@@ -348,15 +351,15 @@ mod tests {
         p.rows[0][0] = parse_cell("C-2 01 ...").unwrap();
         let changes = vec![
             ed.set_pattern(0, p).unwrap(),
-            Change::Title(*b"nouveau titre\0\0\0\0\0\0\0"),
+            Change::Title(*b"new title\0\0\0\0\0\0\0\0\0\0\0"),
         ];
-        ed.apply(Origin::Agent, "première ligne", changes);
+        ed.apply(Origin::Agent, "first row", changes);
         let edited = ed.song().clone();
         assert_ne!(edited, original);
 
-        assert_eq!(ed.undo(Origin::Keyboard).as_deref(), Some("première ligne"));
+        assert_eq!(ed.undo(Origin::Keyboard).as_deref(), Some("first row"));
         assert_eq!(ed.song(), &original);
-        assert_eq!(ed.redo(Origin::Keyboard).as_deref(), Some("première ligne"));
+        assert_eq!(ed.redo(Origin::Keyboard).as_deref(), Some("first row"));
         assert_eq!(ed.song(), &edited);
         assert_eq!(ed.journal().len(), 3);
     }
@@ -396,7 +399,7 @@ mod tests {
         let change = ed.set_start_tempo(Some(90), Some(3)).unwrap();
         ed.apply(Origin::Keyboard, "tempo", vec![change]);
         assert_eq!(ed.start_tempo(), (90, 3));
-        // Le BPM a été mis à jour sur place : deux colonnes d'effet occupées, pas trois.
+        // The BPM was updated in place: two effect columns in use, not three.
         let used = ed.song().patterns[0].rows[0]
             .iter()
             .filter(|c| c.effect == 0xF)

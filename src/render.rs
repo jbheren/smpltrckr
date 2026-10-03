@@ -1,8 +1,8 @@
-//! Rendu hors ligne d'un morceau, jusqu'à sa fin.
+//! Offline rendering of a song, up to its end.
 
 use crate::replayer::Replayer;
 
-/// Rend le morceau en stéréo entrelacée, jusqu'à la fin ou à `max_seconds`.
+/// Renders the song as interleaved stereo, up to its end or `max_seconds`.
 pub fn stereo(replayer: &mut Replayer, rate: u32, max_seconds: f64) -> Vec<f32> {
     let max_frames = (max_seconds * rate as f64) as usize;
     let mut out = Vec::new();
@@ -14,7 +14,7 @@ pub fn stereo(replayer: &mut Replayer, rate: u32, max_seconds: f64) -> Vec<f32> 
     out
 }
 
-/// Rend une piste mono par voie (sans tenir compte du mixeur), jusqu'à la fin ou à `max_seconds`.
+/// Renders one mono track per voice (ignoring the mixer), up to the end or `max_seconds`.
 pub fn voices(
     replayer: &mut Replayer,
     channels: usize,
@@ -29,8 +29,8 @@ pub fn voices(
     outs
 }
 
-/// Durée du morceau en secondes (jusqu'à la fin ou à `max_seconds`), calculée rapidement
-/// avec un rendu à basse fréquence.
+/// Song duration in seconds (up to its end or `max_seconds`), computed quickly with a
+/// low sample rate render.
 pub fn duration(song: std::sync::Arc<crate::song::Song>, max_seconds: f64) -> f64 {
     const RATE: u32 = 1000;
     let mut replayer = Replayer::new(song, RATE);

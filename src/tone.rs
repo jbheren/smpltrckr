@@ -1,7 +1,7 @@
-//! Brique « son » : joue un arpège façon chiptune et mesure le comportement du flux audio.
+//! Sound check: plays a chiptune arpeggio and measures how the audio stream behaves.
 //!
-//! Le son est produit comme le fera le replayer : un petit sample 8 bits signé (onde carrée)
-//! lu à la fréquence donnée par une période Amiga.
+//! The sound is made the replayer way: a tiny signed 8-bit square sample read at the rate
+//! given by an Amiga period.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
@@ -10,14 +10,15 @@ use std::time::{Duration, Instant};
 use anyhow::Context;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, OutputCallbackInfo, SampleFormat, SizedSample, StreamConfig};
+use rust_i18n::t;
 
 use crate::note;
 
-/// Arpège en la mineur, une note par ligne (vitesse 6, 125 BPM : 120 ms par ligne).
+/// A-minor arpeggio, one note per row (speed 6, 125 BPM: 120 ms per row).
 const TUNE: [&str; 8] = ["A-2", "C-3", "E-3", "A-3", "E-3", "C-3", "A-2", "E-2"];
 const ROW: Duration = Duration::from_millis(120);
 
-/// Compteurs partagés entre le callback audio et le thread principal (sans verrou).
+/// Counters shared by the audio callback and the main thread (lock-free).
 #[derive(Default)]
 struct Stats {
     callbacks: AtomicU64,
@@ -32,11 +33,11 @@ pub fn run(seconds: u64) -> anyhow::Result<()> {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
-        .context("aucune sortie audio par défaut")?;
+        .with_context(|| t!("audio.no_output"))?;
     let supported = device.default_output_config()?;
-    println!("Hôte audio  : {:?}", host.id());
-    println!("Sortie      : {}", device.id()?);
-    println!("Config      : {supported:?}");
+    println!("{}", t!("tone.host", host = format!("{:?}", host.id())));
+    println!("{}", t!("tone.output", device = device.id()?));
+    println!("{}", t!("tone.config", config = format!("{supported:?}")));
 
     let stats = Arc::new(Stats {
         frames_min: AtomicU64::new(u64::MAX),
@@ -47,7 +48,7 @@ pub fn run(seconds: u64) -> anyhow::Result<()> {
         SampleFormat::F32 => build::<f32>(&device, &config, stats.clone()),
         SampleFormat::I16 => build::<i16>(&device, &config, stats.clone()),
         SampleFormat::I32 => build::<i32>(&device, &config, stats.clone()),
-        other => anyhow::bail!("format d'échantillon non géré : {other}"),
+        other => anyhow::bail!(t!("audio.unsupported_format", format = other)),
     }?;
 
     stream.play()?;
@@ -61,24 +62,25 @@ pub fn run(seconds: u64) -> anyhow::Result<()> {
         stats.frames_max.load(Relaxed),
     );
     println!();
-    println!("Callbacks   : {}", stats.callbacks.load(Relaxed));
     println!(
-        "Tampon      : {fmin} à {fmax} trames ({:.1} à {:.1} ms)",
-        ms(fmin),
-        ms(fmax)
+        "{}",
+        t!("tone.callbacks", count = stats.callbacks.load(Relaxed))
     );
+    let (ms_min, ms_max) = (format!("{:.1}", ms(fmin)), format!("{:.1}", ms(fmax)));
     println!(
-        "Latence max : {:.1} ms (callback → sortie, estimée par cpal)",
-        stats.latency_max_us.load(Relaxed) as f64 / 1000.0
+        "{}",
+        t!(
+            "tone.buffer",
+            min = fmin,
+            max = fmax,
+            ms_min = ms_min,
+            ms_max = ms_max
+        )
     );
-    println!(
-        "Calcul max  : {} µs par callback",
-        stats.busy_max_us.load(Relaxed)
-    );
-    println!(
-        "Erreurs     : {} (décrochages, changements de périphérique…)",
-        stats.errors.load(Relaxed)
-    );
+    let latency = format!("{:.1}", stats.latency_max_us.load(Relaxed) as f64 / 1000.0);
+    println!("{}", t!("tone.latency", ms = latency));
+    println!("{}", t!("tone.busy", us = stats.busy_max_us.load(Relaxed)));
+    println!("{}", t!("tone.errors", count = stats.errors.load(Relaxed)));
     Ok(())
 }
 
@@ -93,9 +95,9 @@ where
     let rate = config.sample_rate as f64;
     let channels = config.channels as usize;
 
-    // Sample « chip » : 32 octets d'onde carrée 8 bits signée, en boucle.
+    // "Chip" sample: 32 bytes of looped signed 8-bit square wave.
     let sample: Vec<i8> = (0..32).map(|i| if i < 16 { 64 } else { -64 }).collect();
-    // Périodes calculées d'avance : le callback audio ne doit rien allouer.
+    // Periods computed up front: the audio callback must not allocate.
     let periods = TUNE.map(|n| note::PERIODS[note::parse(n).unwrap()]);
     let frames_per_row = (ROW.as_secs_f64() * rate) as u64;
     let (mut frame, mut pos) = (0u64, 0f64);
@@ -107,7 +109,7 @@ where
             let start = Instant::now();
             for chunk in out.chunks_mut(channels) {
                 let period = periods[(frame / frames_per_row) as usize % periods.len()];
-                // Position dans le sample en « octets par seconde » de Paula.
+                // Position in the sample, in Paula "bytes per second".
                 pos = (pos + note::period_to_hz(period) / rate) % sample.len() as f64;
                 let value = T::from_sample(sample[pos as usize] as f32 / 128.0 * 0.3);
                 chunk.fill(value);
@@ -129,7 +131,7 @@ where
         },
         move |err| {
             errors.errors.fetch_add(1, Relaxed);
-            eprintln!("erreur audio : {err}");
+            eprintln!("{}", t!("audio.error", error = err));
         },
         None,
     )?;

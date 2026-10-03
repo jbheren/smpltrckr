@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Constitue le corpus de test : des .mod tirés au hasard sur The Mod Archive.
+"""Builds the test corpus: random .mod files from The Mod Archive.
 
-Les modules ne sont pas versionnés (droits variables) : ils vont dans corpus/,
-ignoré par git. Les identifiants retenus sont notés dans tests/corpus-ids.txt
-pour pouvoir reconstituer le même corpus avec --from-list.
+The modules are not versioned (their rights vary): they go to corpus/, ignored by git.
+The picked IDs are listed in tests/corpus-ids.txt, so --from-list can rebuild the same
+corpus.
 
-Usage : scripts/fetch-corpus.py [--count 50] [--seed 1] [--from-list]
+Usage: scripts/fetch-corpus.py [--count 50] [--seed 1] [--from-list]
 """
 import argparse, pathlib, random, re, sys, time, urllib.request
 
@@ -49,7 +49,7 @@ def main():
             print(f"{module_id}: {e}", file=sys.stderr)
             continue
         finally:
-            time.sleep(1)  # rester poli avec le serveur
+            time.sleep(1)  # stay polite with the server
         if not name or not is_mod(name) or len(data) < 600:
             continue
         safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)

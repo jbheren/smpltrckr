@@ -1,0 +1,249 @@
+_version: 2
+
+# Audio output
+audio.no_output:
+  en: no default audio output
+  fr: aucune sortie audio par défaut
+  ja: 既定のオーディオ出力がありません
+audio.unsupported_format:
+  en: "unsupported sample format: %{format}"
+  fr: "format d'échantillon non géré : %{format}"
+  ja: "未対応のサンプル形式: %{format}"
+audio.error:
+  en: "audio error: %{error}"
+  fr: "erreur audio : %{error}"
+  ja: "オーディオエラー: %{error}"
+
+# .mod reader
+mod.truncated:
+  en: "file truncated at byte %{offset}"
+  fr: "fichier tronqué à l'octet %{offset}"
+  ja: "ファイルが %{offset} バイト目で途切れています"
+mod.powerpacker:
+  en: "module packed with PowerPacker, not supported (unpack it first)"
+  fr: "module compressé avec PowerPacker, non pris en charge (le décompresser d'abord)"
+  ja: "PowerPacker で圧縮されたモジュールには未対応です（先に展開してください）"
+mod.flt8:
+  en: "FLT8 modules are not supported"
+  fr: "variante FLT8 non prise en charge"
+  ja: "FLT8 形式には未対応です"
+mod.unknown_format:
+  en: "unknown format (neither a ProTracker tag nor a valid Soundtracker header)"
+  fr: "format non reconnu (ni signature ProTracker, ni en-tête Soundtracker valide)"
+  ja: "不明な形式です（ProTracker のタグも有効な Soundtracker のヘッダもありません）"
+
+# Text notation
+text.bad_cell:
+  en: "expected a cell like « C-3 01 A04 », got %{text}"
+  fr: "cellule attendue sous la forme « C-3 01 A04 », reçu %{text}"
+  ja: "「C-3 01 A04」の形のセルが必要です（受け取った値: %{text}）"
+text.unknown_note_marker:
+  en: "« ??? » cannot be written: use a note from C-1 to B-3"
+  fr: "« ??? » ne peut pas être écrit : utiliser une note de C-1 à B-3"
+  ja: "「???」は書き込めません。C-1 から B-3 の音符を使ってください"
+text.effect_in_note_column:
+  en: "%{effect} is an effect written in the note column: a cell is note sample effect, e.g. « ... .. %{effect} »"
+  fr: "%{effect} est un effet écrit à la place de la note : une cellule s'écrit note sample effet, ex. « ... .. %{effect} »"
+  ja: "%{effect} は音符の欄に書かれたエフェクトです。セルは「音符 サンプル エフェクト」の順です（例:「... .. %{effect}」）"
+text.note_out_of_range:
+  en: "note %{note} is outside the ProTracker range: use a note from C-1 to B-3"
+  fr: "note %{note} hors de la plage ProTracker : utiliser une note de C-1 à B-3"
+  ja: "音符 %{note} は ProTracker の範囲外です。C-1 から B-3 を使ってください"
+text.unknown_note:
+  en: "unknown note %{note} (C-1 to B-3)"
+  fr: "note inconnue %{note} (C-1 à B-3)"
+  ja: "不明な音符 %{note}（C-1〜B-3）"
+text.bad_sample:
+  en: "invalid sample %{sample}"
+  fr: "sample invalide %{sample}"
+  ja: "無効なサンプル %{sample}"
+text.sample_out_of_range:
+  en: "sample %{sample} out of range (1 to 31)"
+  fr: "sample hors limites %{sample} (1 à 31)"
+  ja: "サンプル %{sample} は範囲外です（1〜31）"
+text.bad_effect:
+  en: "invalid effect %{effect} (3 hex digits, e.g. A04)"
+  fr: "effet invalide %{effect} (3 chiffres hexadécimaux, ex. A04)"
+  ja: "無効なエフェクト %{effect}（16進数3桁、例: A04）"
+text.bad_row_number:
+  en: "invalid row number %{row}"
+  fr: "numéro de ligne invalide %{row}"
+  ja: "無効な行番号 %{row}"
+text.row:
+  en: "row %{row}"
+  fr: "ligne %{row}"
+  ja: "%{row} 行目"
+text.row_out_of_pattern:
+  en: "row %{row} is outside the pattern (0 to %{last})"
+  fr: "ligne %{row} hors du pattern (0 à %{last})"
+  ja: "%{row} 行目はパターンの範囲外です（0〜%{last}）"
+text.wrong_voice_count:
+  en: "row %{row}: %{count} voices instead of %{expected}"
+  fr: "ligne %{row} : %{count} voies au lieu de %{expected}"
+  ja: "%{row} 行目: チャンネル数が %{count}（%{expected} のはず）"
+
+# Song overview (dump)
+dump.title:
+  en: "title    : %{title}"
+  fr: "titre    : %{title}"
+  ja: "タイトル : %{title}"
+dump.format:
+  en: "format   : %{kind}, %{voices} voices, %{patterns} patterns"
+  fr: "format   : %{kind}, %{voices} voies, %{patterns} patterns"
+  ja: "形式     : %{kind}、%{voices} チャンネル、%{patterns} パターン"
+dump.orders:
+  en: "orders   : %{orders}"
+  fr: "ordre    : %{orders}"
+  ja: "順番     : %{orders}"
+dump.samples:
+  en: "samples  :"
+  fr: "samples  :"
+  ja: "サンプル :"
+dump.sample:
+  en: "%{bytes} bytes, vol %{volume}, finetune %{finetune}"
+  fr: "%{bytes} octets, vol %{volume}, finetune %{finetune}"
+  ja: "%{bytes} バイト、音量 %{volume}、ファインチューン %{finetune}"
+dump.loop:
+  en: ", loop %{start}+%{length}"
+  fr: ", boucle %{start}+%{length}"
+  ja: "、ループ %{start}+%{length}"
+
+# Editor checks
+editor.next_pattern_only:
+  en: "pattern %{pattern}: only the next pattern (%{next}) can be created"
+  fr: "pattern %{pattern} : on ne peut créer que le pattern suivant (%{next})"
+  ja: "パターン %{pattern}: 新しく作れるのは次のパターン（%{next}）だけです"
+editor.too_many_patterns:
+  en: "128 patterns at most"
+  fr: "128 patterns au plus"
+  ja: "パターンは最大 128 個です"
+editor.pattern_shape:
+  en: "a .mod pattern has 64 rows of %{voices} voices"
+  fr: "un pattern de .mod fait 64 lignes de %{voices} voies"
+  ja: ".mod のパターンは 64 行 × %{voices} チャンネルです"
+editor.order_length:
+  en: "the order list holds 1 to 128 positions"
+  fr: "la liste d'ordre compte de 1 à 128 positions"
+  ja: "順番リストは 1〜128 ポジションです"
+editor.no_such_pattern:
+  en: "no pattern %{pattern} (the song has %{count})"
+  fr: "pattern %{pattern} inexistant (le morceau en a %{count})"
+  ja: "パターン %{pattern} はありません（曲には %{count} 個）"
+editor.tempo_range:
+  en: "tempo from 32 to 255 BPM"
+  fr: "tempo de 32 à 255 BPM"
+  ja: "テンポは 32〜255 BPM です"
+editor.speed_range:
+  en: "speed from 1 to 31"
+  fr: "vitesse de 1 à 31"
+  ja: "スピードは 1〜31 です"
+editor.no_free_effect:
+  en: "row 00 of pattern %{pattern}: no free effect column for Fxx"
+  fr: "ligne 00 du pattern %{pattern} : aucune colonne d'effet libre pour Fxx"
+  ja: "パターン %{pattern} の 00 行目: Fxx を書く空きエフェクト欄がありません"
+editor.no_such_sample:
+  en: "no sample %{sample} (1 to %{count})"
+  fr: "sample %{sample} inexistant (1 à %{count})"
+  ja: "サンプル %{sample} はありません（1〜%{count}）"
+
+# Journal
+journal.edit:
+  en: "edit: %{what}"
+  fr: "modif : %{what}"
+  ja: "編集: %{what}"
+journal.undo:
+  en: "undo: %{what}"
+  fr: "annulation : %{what}"
+  ja: "取り消し: %{what}"
+journal.redo:
+  en: "redo: %{what}"
+  fr: "rétablissement : %{what}"
+  ja: "やり直し: %{what}"
+journal.agent:
+  en: agent
+  fr: agent
+  ja: エージェント
+journal.keyboard:
+  en: keyboard
+  fr: clavier
+  ja: キーボード
+
+# Samples
+samples.unknown_waveform:
+  en: "unknown waveform %{waveform} (pick one of: %{choices})"
+  fr: "forme d'onde inconnue %{waveform} (au choix : %{choices})"
+  ja: "不明な波形 %{waveform}（選べるもの: %{choices}）"
+samples.read_failed:
+  en: "cannot read %{path}"
+  fr: "lecture de %{path} impossible"
+  ja: "%{path} を読み込めません"
+samples.not_audio:
+  en: "%{path}: neither WAV nor AIFF"
+  fr: "%{path} : ni WAV ni AIFF"
+  ja: "%{path}: WAV でも AIFF でもありません"
+samples.silent:
+  en: "%{path}: no sound"
+  fr: "%{path} : aucun son"
+  ja: "%{path}: 音が入っていません"
+samples.bad_format:
+  en: "invalid audio format (%{bits} bits)"
+  fr: "format audio invalide (%{bits} bits)"
+  ja: "無効なオーディオ形式（%{bits} ビット）"
+samples.float_bits:
+  en: "%{bits}-bit floats are not supported"
+  fr: "flottants de %{bits} bits non pris en charge"
+  ja: "%{bits} ビット浮動小数点には未対応です"
+samples.bad_wav:
+  en: invalid WAV
+  fr: WAV invalide
+  ja: 無効な WAV です
+samples.compressed_wav:
+  en: "compressed WAV (format %{format}) is not supported"
+  fr: "WAV compressé (format %{format}) non pris en charge"
+  ja: "圧縮 WAV（形式 %{format}）には未対応です"
+samples.no_data:
+  en: no audio data
+  fr: aucune donnée audio
+  ja: 音声データがありません
+samples.bad_aiff:
+  en: invalid AIFF
+  fr: AIFF invalide
+  ja: 無効な AIFF です
+samples.compressed_aiff:
+  en: "compressed AIFF-C (%{codec}) is not supported"
+  fr: "AIFF-C compressé (%{codec}) non pris en charge"
+  ja: "圧縮 AIFF-C（%{codec}）には未対応です"
+
+# Sound check (smpltrckr tone)
+tone.host:
+  en: "Audio host : %{host}"
+  fr: "Hôte audio  : %{host}"
+  ja: "オーディオ  : %{host}"
+tone.output:
+  en: "Output     : %{device}"
+  fr: "Sortie      : %{device}"
+  ja: "出力        : %{device}"
+tone.config:
+  en: "Config     : %{config}"
+  fr: "Config      : %{config}"
+  ja: "設定        : %{config}"
+tone.callbacks:
+  en: "Callbacks  : %{count}"
+  fr: "Callbacks   : %{count}"
+  ja: "コールバック: %{count}"
+tone.buffer:
+  en: "Buffer     : %{min} to %{max} frames (%{ms_min} to %{ms_max} ms)"
+  fr: "Tampon      : %{min} à %{max} trames (%{ms_min} à %{ms_max} ms)"
+  ja: "バッファ    : %{min}〜%{max} フレーム（%{ms_min}〜%{ms_max} ms）"
+tone.latency:
+  en: "Max latency: %{ms} ms (callback → output, cpal's estimate)"
+  fr: "Latence max : %{ms} ms (callback → sortie, estimée par cpal)"
+  ja: "最大遅延    : %{ms} ms（コールバック → 出力、cpal の推定）"
+tone.busy:
+  en: "Max compute: %{us} µs per callback"
+  fr: "Calcul max  : %{us} µs par callback"
+  ja: "最大処理    : コールバックあたり %{us} µs"
+tone.errors:
+  en: "Errors     : %{count} (dropouts, device changes…)"
+  fr: "Erreurs     : %{count} (décrochages, changements de périphérique…)"
+  ja: "エラー      : %{count}（音切れ、デバイス変更など）"

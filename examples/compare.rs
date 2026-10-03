@@ -1,11 +1,11 @@
-//! Compare deux rendus WAV d'un même module : durées et corrélation des enveloppes.
+//! Compares two WAV renders of the same module: durations and envelope correlation.
 //!
-//! Usage : compare nôtre.wav référence.wav
-//! La corrélation porte sur l'énergie par fenêtres de 5 ms, en mono : elle mesure si les
-//! notes et les volumes tombent au même moment, sans dépendre de l'interpolation ni de la stéréo.
-//! Elle est calculée par tranches de 2 s, chacune alignée au mieux (±300 ms) : libopenmpt
-//! arrondit la durée d'un tick à un nombre entier d'échantillons, d'où une légère dérive
-//! hors 125 BPM, qu'on mesure à part. Avec SEGMENTS=1, le score de chaque tranche s'affiche.
+//! Usage: compare ours.wav reference.wav
+//! The correlation runs on the energy over 5 ms windows, in mono: it tells whether notes and
+//! volumes land at the same moments, whatever the interpolation or the stereo.
+//! It is computed over 2 s slices, each aligned as well as possible (±300 ms): libopenmpt
+//! rounds a tick to a whole number of samples, hence a slight drift away from 125 BPM,
+//! measured separately. With SEGMENTS=1, each slice's score is printed.
 
 use std::path::Path;
 
@@ -35,7 +35,7 @@ fn correlation(a: &[f64], b: &[f64]) -> f64 {
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    anyhow::ensure!(args.len() == 2, "usage : compare nôtre.wav référence.wav");
+    anyhow::ensure!(args.len() == 2, "usage: compare ours.wav reference.wav");
     let (ours, rate_ours) = wav::read_mono(Path::new(&args[0]))?;
     let (reference, rate_ref) = wav::read_mono(Path::new(&args[1]))?;
     let (d_ours, d_ref) = (
@@ -53,13 +53,13 @@ fn main() -> anyhow::Result<()> {
                 Some((correlation(a.get(from..from + segment)?, reference), lag))
             })
             .fold((f64::MIN, 0), |best, x| if x.0 > best.0 { x } else { best });
-        // Les tranches presque silencieuses ne disent rien.
+        // Near-silent slices tell nothing.
         if reference.iter().any(|&x| x > 1e-3) {
             scores.push(r);
             drift = lag;
             if std::env::var_os("SEGMENTS").is_some() {
                 eprintln!(
-                    "{:6.1} s  r={r:.3}  décalage {:+} ms",
+                    "{:6.1} s  r={r:.3}  offset {:+} ms",
                     start as f64 / 200.0,
                     lag * 5
                 );
@@ -67,7 +67,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
     if scores.is_empty() {
-        // Morceau plus court qu'une tranche : corrélation globale, sans alignement.
+        // Song shorter than a slice: global correlation, no alignment.
         scores.push(correlation(&a, &b));
     }
     let mean = scores.iter().sum::<f64>() / scores.len() as f64;
@@ -78,7 +78,7 @@ fn main() -> anyhow::Result<()> {
         0.0
     };
     println!(
-        "durée {d_ours:7.2} s / {d_ref:7.2} s ({gap:+5.1} %)  enveloppe r={mean:.3} (min {min:.3})  dérive {:+} ms",
+        "duration {d_ours:7.2} s / {d_ref:7.2} s ({gap:+5.1} %)  envelope r={mean:.3} (min {min:.3})  drift {:+} ms",
         drift * 5
     );
     Ok(())
