@@ -208,7 +208,7 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 - Le replayer publie, sans verrou, l'état de chaque voie (niveau, quelques centaines d'échantillons récents) pour l'affichage.
 - **Jalon :** les rendus sont fidèles à l'oreille, et les écarts mesurés restent sous un seuil sur la plupart des modules du corpus.
 
-**Résultats (03/10/2026).** Jalon atteint à la mesure. L'écoute reste à faire par JB.
+**Résultats (03/10/2026).** Jalon atteint, à la mesure comme à l'écoute : JB trouve le son « super ».
 - Replayer maison (`src/replayer.rs`) : séquenceur, effets 0 à F et Exx (sauf E0, E3, EF et 8xx, ignorés), interpolation linéaire, stéréo à l'Amiga (gauche-droite-droite-gauche) avec séparation réglable. Rien n'est alloué dans le chemin audio.
 - Mixage par voie (coupure, solo, volume) et moniteur sans verrou (`src/monitor.rs`) : oscilloscope et niveau de chaque voie, plus le master, prêts pour l'interface.
 - Commandes : `smpltrckr play` (sortie audio, VU-mètres en texte) et `smpltrckr render` (WAV stéréo, ou une piste par voie avec `--stems`), avec `--mute`, `--solo`, `--volume`, `--separation`.
