@@ -296,13 +296,13 @@ view.samples:
 
 # --- Key hints (bottom line): "key action · key action …" ------------------------------------
 hint.edit:
-  en: "Space listen · piano-keys notes · 0-9/A-F sample/effect · Del clear · Enter play · F6 orders · F7 samples · ? help"
-  fr: "Espace écoute · clavier-piano notes · 0-9/A-F sample/effet · Suppr effacer · Entrée lire · F6 ordre · F7 samples · ? aide"
-  ja: "Space 試聴 · ピアノキー 音符 · 0-9/A-F サンプル/エフェクト · Del 消去 · Enter 再生 · F6 順番 · F7 サンプル · ? ヘルプ"
+  en: "Space listen · piano-keys notes · 0-9/A-F sample/effect · Del clear · Enter play · Alt+1…8 mute · Alt+S solo · Alt+0 unmute all · F6 orders · F7 samples · ? help"
+  fr: "Espace écoute · clavier-piano notes · 0-9/A-F sample/effet · Suppr effacer · Entrée lire · Alt+1…8 couper · Alt+S solo · Alt+0 tout rétablir · F6 ordre · F7 samples · ? aide"
+  ja: "Space 試聴 · ピアノキー 音符 · 0-9/A-F サンプル/エフェクト · Del 消去 · Enter 再生 · Alt+1…8 ミュート · Alt+S ソロ · Alt+0 全解除 · F6 順番 · F7 サンプル · ? ヘルプ"
 hint.pattern:
-  en: "Space edit · Enter play · Ctrl+P loop · Ctrl+B tempo · Alt+1…8 mute · F6 orders · F7 samples · Ctrl+S save · ? help"
-  fr: "Espace éditer · Entrée lire · Ctrl+P boucle · Ctrl+B tempo · Alt+1…8 couper · F6 ordre · F7 samples · Ctrl+S enregistrer · ? aide"
-  ja: "Space 編集 · Enter 再生 · Ctrl+P ループ · Ctrl+B テンポ · Alt+1…8 ミュート · F6 順番 · F7 サンプル · Ctrl+S 保存 · ? ヘルプ"
+  en: "Space edit · Enter play · Ctrl+P loop · Ctrl+B tempo · Alt+1…8 mute · Alt+S solo · Alt+0 unmute all · F6 orders · F7 samples · Ctrl+S save · ? help"
+  fr: "Espace éditer · Entrée lire · Ctrl+P boucle · Ctrl+B tempo · Alt+1…8 couper · Alt+S solo · Alt+0 tout rétablir · F6 ordre · F7 samples · Ctrl+S enregistrer · ? aide"
+  ja: "Space 編集 · Enter 再生 · Ctrl+P ループ · Ctrl+B テンポ · Alt+1…8 ミュート · Alt+S ソロ · Alt+0 全解除 · F6 順番 · F7 サンプル · Ctrl+S 保存 · ? ヘルプ"
 hint.orders:
   en: "↑↓ position · ←→ pattern (creates the next one) · Ins add · Del remove · Enter edit · F5 pattern"
   fr: "↑↓ position · ←→ pattern (crée le suivant) · Inser ajouter · Suppr retirer · Entrée éditer · F5 pattern"
@@ -430,9 +430,9 @@ help.solo.keys:
   fr: Alt+S / Alt+0
   ja: Alt+S / Alt+0
 help.solo.what:
-  en: solo the cursor voice / reset the mix
-  fr: solo de la voie du curseur / mixage remis à zéro
-  ja: カーソルのチャンネルをソロ / ミックスをリセット
+  en: solo the cursor voice (mutes all the others) / reset the mix
+  fr: solo de la voie du curseur (coupe toutes les autres) / mixage remis à zéro
+  ja: カーソルのチャンネルをソロ（他をすべてミュート）/ ミックスをリセット
 help.volume.keys:
   en: Alt+↑ / Alt+↓
   fr: Alt+↑ / Alt+↓

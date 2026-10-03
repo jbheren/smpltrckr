@@ -5,7 +5,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
+use ratatui::widgets::{Block, Clear, Paragraph};
 use rust_i18n::t;
 use unicode_width::UnicodeWidthStr;
 
@@ -58,10 +58,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     draw_orders(f, app, orders);
     draw_samples(f, app, samples);
     draw_master(f, app, master);
-    f.render_widget(
-        Paragraph::new(hint_line(app)).wrap(Wrap { trim: true }),
-        hints,
-    );
+    f.render_widget(Paragraph::new(hint_lines(app, hints.width as usize)), hints);
     f.render_widget(Line::from(app.status.as_str()).fg(Color::Gray), status);
 
     if let Some(dialog) = &app.dialog {
@@ -69,9 +66,9 @@ pub fn draw(f: &mut Frame, app: &App) {
     }
 }
 
-/// Bottom hints (two rows, wrapped): on an effect column, what the effect under the cursor
-/// does (or the effects to pick from); elsewhere, the useful keys of the active zone.
-fn hint_line(app: &App) -> Line<'static> {
+/// Bottom hints (two rows): on an effect column, what the effect under the cursor does (or
+/// the effects to pick from); elsewhere, the useful keys of the active zone.
+fn hint_lines(app: &App, width: usize) -> Vec<Line<'static>> {
     let on_effect = matches!(
         app.field,
         Field::Effect | Field::ParamHigh | Field::ParamLow
@@ -79,10 +76,10 @@ fn hint_line(app: &App) -> Line<'static> {
     if app.focus == Focus::Pattern && on_effect {
         let cell = app.current_cell();
         if let Some(text) = effects::describe(cell.effect, cell.param) {
-            return Line::from(vec![
+            return vec![Line::from(vec![
                 text.fg(Color::Magenta),
                 format!("   {}", t!("hint.effect_help")).fg(DIM),
-            ]);
+            ])];
         }
         let palette = if cell.effect == 0xE {
             effects::extended_palette()
@@ -90,12 +87,11 @@ fn hint_line(app: &App) -> Line<'static> {
             effects::palette()
         };
         let prefix = if cell.effect == 0xE { "E" } else { "" };
-        let mut spans = vec![format!("{} ", t!("hint.effects")).fg(DIM)];
-        for (digit, name) in palette {
-            spans.push(format!("{prefix}{digit}").fg(Color::Magenta));
-            spans.push(format!(" {name}  ").fg(DIM));
-        }
-        return Line::from(spans);
+        let groups = palette
+            .into_iter()
+            .map(|(digit, name)| (format!("{prefix}{digit}"), name, Color::Magenta));
+        let lead = Some(format!("{} ", t!("hint.effects")));
+        return wrap_groups(lead, groups, width);
     }
     let id = match app.focus {
         Focus::Pattern if app.edit_mode => FOCUS_HINTS[0],
@@ -104,16 +100,44 @@ fn hint_line(app: &App) -> Line<'static> {
         Focus::Samples => FOCUS_HINTS[3],
     };
     let hints = t!(id);
-    let mut spans = Vec::new();
-    for (i, part) in hints.split(" · ").enumerate() {
-        if i > 0 {
-            spans.push("  ".into());
-        }
+    let groups = hints.split(" · ").map(|part| {
         let (key, what) = part.split_once(' ').unwrap_or((part, ""));
-        spans.push(key.to_string().fg(Color::Cyan));
-        spans.push(format!(" {what}").fg(DIM));
+        (key.to_string(), what.to_string(), Color::Cyan)
+    });
+    wrap_groups(None, groups, width)
+}
+
+/// Lays out "key action" groups over as many lines as needed, never splitting a group.
+fn wrap_groups(
+    lead: Option<String>,
+    groups: impl Iterator<Item = (String, String, Color)>,
+    width: usize,
+) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut used = 0;
+    if let Some(lead) = lead {
+        used = lead.width();
+        spans.push(lead.fg(DIM));
     }
-    Line::from(spans)
+    for (key, what, color) in groups {
+        let group_width = key.width() + 1 + what.width();
+        let gap = if spans.is_empty() { 0 } else { 2 };
+        if used + gap + group_width > width && !spans.is_empty() {
+            lines.push(Line::from(std::mem::take(&mut spans)));
+            used = 0;
+        } else if gap > 0 {
+            spans.push("  ".into());
+            used += gap;
+        }
+        spans.push(key.fg(color));
+        spans.push(format!(" {what}").fg(DIM));
+        used += group_width;
+    }
+    if !spans.is_empty() {
+        lines.push(Line::from(spans));
+    }
+    lines
 }
 
 fn panel(title: String, focused: bool) -> Block<'static> {
@@ -656,6 +680,7 @@ mod tests {
         let s = render(&app);
         for expected in [
             "Space listen",
+            "Alt+S solo",
             "smpltrckr",
             "screen",
             "EDIT",
