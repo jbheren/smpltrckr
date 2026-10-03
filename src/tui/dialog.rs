@@ -12,6 +12,7 @@ pub enum Purpose {
     SaveAs,
     RenameSample,
     SetTitle,
+    SetTempo,
     Generate,
 }
 

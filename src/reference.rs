@@ -23,7 +23,7 @@ dit dans quel ordre jouer les patterns (un pattern peut revenir plusieurs fois).
 - Vitesse (ticks par ligne) et tempo (BPM) : par défaut vitesse 6 et 125 BPM, soit 120 ms par
   ligne, 16 lignes = une mesure de 4 temps à 125 BPM (une ligne = une double croche).
 - Fxx change la vitesse (F01 à F1F) ou le tempo (F20 à FFF) ; à placer en ligne 00 du premier
-  pattern, sur n'importe quelle voie. F00 arrête le morceau.
+  pattern, sur n'importe quelle voie. F00 arrête le morceau. Le plus simple : `song_set_tempo`.
 - Durée d'une ligne = vitesse × 2,5 / BPM secondes.
 
 ## Les cellules

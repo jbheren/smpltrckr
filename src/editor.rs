@@ -221,6 +221,58 @@ impl Editor {
         })
     }
 
+    /// Tempo (BPM) et vitesse au début du morceau : les Fxx de la ligne 00 du premier
+    /// pattern joué, ou 125 BPM et vitesse 6 par défaut.
+    pub fn start_tempo(&self) -> (u8, u8) {
+        let song = &self.song;
+        let (mut bpm, mut speed) = (125, 6);
+        if let Some(row) = song
+            .patterns
+            .get(song.orders[0] as usize)
+            .and_then(|p| p.rows.first())
+        {
+            for cell in row.iter().filter(|c| c.effect == 0xF) {
+                match cell.param {
+                    1..=0x1F => speed = cell.param,
+                    0x20.. => bpm = cell.param,
+                    0 => {}
+                }
+            }
+        }
+        (bpm, speed)
+    }
+
+    /// Fixe le tempo et/ou la vitesse au début du morceau : met à jour les Fxx de la ligne 00
+    /// du premier pattern joué, ou les écrit dans la colonne d'effet d'une voie libre.
+    pub fn set_start_tempo(&self, bpm: Option<u8>, speed: Option<u8>) -> anyhow::Result<Change> {
+        if let Some(b) = bpm {
+            ensure!(b >= 0x20, "tempo de 32 à 255 BPM");
+        }
+        if let Some(s) = speed {
+            ensure!((1..=0x1F).contains(&s), "vitesse de 1 à 31");
+        }
+        let index = self.song.orders[0] as usize;
+        let mut pattern = self.song.patterns[index].clone();
+        let row = &mut pattern.rows[0];
+        for (value, is_kind) in [
+            (bpm, (|p: u8| p >= 0x20) as fn(u8) -> bool),
+            (speed, (|p: u8| (1..=0x1F).contains(&p)) as fn(u8) -> bool),
+        ] {
+            let Some(value) = value else { continue };
+            let slot = row
+                .iter()
+                .position(|c| c.effect == 0xF && is_kind(c.param))
+                .or_else(|| row.iter().position(|c| c.effect == 0 && c.param == 0));
+            let Some(v) = slot else {
+                anyhow::bail!(
+                    "ligne 00 du pattern {index:02} : aucune colonne d'effet libre pour Fxx"
+                );
+            };
+            (row[v].effect, row[v].param) = (0xF, value);
+        }
+        Ok(Change::Pattern(index, Some(pattern)))
+    }
+
     pub fn set_sample(&self, number: usize, sample: Sample) -> anyhow::Result<Change> {
         ensure!(
             (1..=self.song.samples.len()).contains(&number),
@@ -332,6 +384,25 @@ mod tests {
         assert!(ed.set_orders(&[0, 3]).is_err());
         assert!(ed.set_orders(&[]).is_err());
         assert!(ed.set_sample(32, Sample::default()).is_err());
+    }
+
+    #[test]
+    fn start_tempo_updates_or_adds_f_effects() {
+        let mut ed = editor();
+        assert_eq!(ed.start_tempo(), (125, 6));
+        let change = ed.set_start_tempo(Some(140), None).unwrap();
+        ed.apply(Origin::Keyboard, "tempo", vec![change]);
+        assert_eq!(ed.start_tempo(), (140, 6));
+        let change = ed.set_start_tempo(Some(90), Some(3)).unwrap();
+        ed.apply(Origin::Keyboard, "tempo", vec![change]);
+        assert_eq!(ed.start_tempo(), (90, 3));
+        // Le BPM a été mis à jour sur place : deux colonnes d'effet occupées, pas trois.
+        let used = ed.song().patterns[0].rows[0]
+            .iter()
+            .filter(|c| c.effect == 0xF)
+            .count();
+        assert_eq!(used, 2);
+        assert!(ed.set_start_tempo(Some(10), None).is_err());
     }
 
     #[test]

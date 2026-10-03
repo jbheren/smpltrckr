@@ -64,6 +64,14 @@ struct Title {
 }
 
 #[derive(Deserialize, JsonSchema)]
+struct Tempo {
+    /// Tempo en BPM (32 à 255).
+    bpm: Option<u8>,
+    /// Vitesse en ticks par ligne (1 à 31 ; 6 par défaut).
+    speed: Option<u8>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 struct Orders {
     /// Numéros des patterns à jouer, dans l'ordre (1 à 128 positions), ex. [0, 0, 1, 2].
     orders: Vec<u8>,
@@ -305,6 +313,23 @@ impl Tracker {
         let title = Song::new(&p.title).title;
         self.edit(format!("titre « {} »", p.title), |_| {
             Ok(vec![Change::Title(title)])
+        })
+    }
+
+    #[tool(
+        description = "Fixe le tempo (BPM) et/ou la vitesse au début du morceau : écrit ou met à jour les Fxx de la ligne 00 du premier pattern joué."
+    )]
+    async fn song_set_tempo(&self, Parameters(p): Parameters<Tempo>) -> ToolResult {
+        let parts: Vec<String> = [
+            p.bpm.map(|b| format!("{b} BPM")),
+            p.speed.map(|v| format!("vitesse {v}")),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let description = format!("tempo : {}", parts.join(", "));
+        self.edit(description, |ed| {
+            Ok(vec![ed.set_start_tempo(p.bpm, p.speed)?])
         })
     }
 

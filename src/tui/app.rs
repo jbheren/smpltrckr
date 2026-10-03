@@ -316,6 +316,15 @@ impl App {
                     title,
                 )));
             }
+            SetTempo => {
+                let (bpm, speed) = self.editor.start_tempo();
+                let prompt = Prompt::new(
+                    Purpose::SetTempo,
+                    "Tempo en BPM, puis vitesse (ex. 140 6)",
+                    format!("{bpm} {speed}"),
+                );
+                self.dialog = Some(Dialog::Prompt(prompt));
+            }
             Help => self.dialog = Some(Dialog::Help),
             _ => match self.focus {
                 Focus::Pattern => self.act_pattern(action),
@@ -656,6 +665,27 @@ impl App {
                 let path = PathBuf::from(text.trim());
                 self.save(&path);
             }
+            (Purpose::SetTempo, Answer::Text(text)) => {
+                let mut numbers = text.split_whitespace().map(str::parse::<u8>);
+                match (numbers.next(), numbers.next()) {
+                    (Some(Ok(bpm)), speed) if !matches!(speed, Some(Err(_))) => {
+                        let speed = speed.and_then(Result::ok);
+                        let changes = self
+                            .editor
+                            .set_start_tempo(Some(bpm), speed)
+                            .map(|c| vec![c]);
+                        let description = match speed {
+                            Some(s) => format!("tempo {bpm} BPM, vitesse {s}"),
+                            None => format!("tempo {bpm} BPM"),
+                        };
+                        self.status = description.clone();
+                        self.apply_result(description, changes);
+                    }
+                    _ => {
+                        self.status = format!("tempo illisible {text:?} : ex. « 140 » ou « 140 6 »")
+                    }
+                }
+            }
             (Purpose::SetTitle, Answer::Text(title)) => {
                 let title_bytes = Song::new(&title).title;
                 self.apply(
@@ -868,6 +898,18 @@ mod tests {
         assert!(!a.quit);
         a.handle_key(quit);
         assert!(a.quit);
+    }
+
+    #[test]
+    fn ctrl_b_sets_the_tempo() {
+        let mut a = app();
+        a.handle_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL));
+        a.handle_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        typing(&mut a, "140 4");
+        press(&mut a, KeyCode::Enter);
+        assert_eq!(a.editor.start_tempo(), (140, 4));
+        assert_eq!(cell_text(&a, 0, 0), "... .. F8C");
+        assert_eq!(cell_text(&a, 0, 1), "... .. F04");
     }
 
     #[test]

@@ -36,6 +36,7 @@ pub enum Action {
     ResetMix,
     VoiceVolume(i8),
     SetTitle,
+    SetTempo,
     Help,
     // Déplacements (selon la zone active)
     Up,
@@ -79,6 +80,7 @@ pub fn action(key: KeyEvent, focus: Focus) -> Option<Action> {
         KeyCode::Char('y') if ctrl => Redo,
         KeyCode::Char('p') if ctrl => PlayPattern,
         KeyCode::Char('t') if ctrl => SetTitle,
+        KeyCode::Char('b') if ctrl => SetTempo,
         KeyCode::Char('k') if ctrl => DeleteRow,
         KeyCode::Char(c @ '1'..='8') if alt => ToggleMute(c as usize - '1' as usize),
         KeyCode::Char('s' | 'S') if alt => Solo,
@@ -165,7 +167,7 @@ pub const FOCUS_HINTS: [(&str, &str); 4] = [
     ),
     (
         "pattern",
-        "Espace éditer · Entrée lire · Ctrl+P boucle · Alt+1…8 couper · F6 ordre · F7 samples · Ctrl+S enregistrer · ? aide",
+        "Espace éditer · Entrée lire · Ctrl+P boucle · Ctrl+B tempo · Alt+1…8 couper · F6 ordre · F7 samples · Ctrl+S enregistrer · ? aide",
     ),
     (
         "ordre",
@@ -223,6 +225,7 @@ pub const HELP: &[(&str, &str)] = &[
     ),
     ("Ctrl+Z / Ctrl+Y", "annuler / rétablir"),
     ("Ctrl+T", "titre du morceau"),
+    ("Ctrl+B", "tempo (BPM) et vitesse au début du morceau"),
     (
         "Ctrl+Q",
         "quitter (deux fois si le morceau n'est pas enregistré)",
