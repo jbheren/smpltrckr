@@ -283,7 +283,7 @@ pub const FOCUS_HINTS: [(&str, &str); 4] = [
     ),
     (
         "samples",
-        "↑↓ choisir · g générer · l charger WAV/AIFF · n renommer · ←→ volume · [ ] finetune · p écouter · Suppr vider · F5 pattern",
+        "↑↓ choisir · g générer · l charger WAV/AIFF · n renommer · ←→ volume · [ ] finetune · p écouter (Échap : silence) · Suppr vider · F5 pattern",
     ),
 ];
 
@@ -291,7 +291,7 @@ pub const FOCUS_HINTS: [(&str, &str); 4] = [
 pub const HELP: &[(&str, &str)] = &[
     ("Entrée", "lire / arrêter le morceau depuis la position"),
     ("Ctrl+P", "lire le pattern en boucle"),
-    ("Échap", "arrêter"),
+    ("Échap", "arrêter la lecture et les notes écoutées"),
     (
         "Espace",
         "mode édition (sinon, les notes ne font que sonner)",

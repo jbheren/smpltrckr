@@ -112,9 +112,12 @@ pub struct App {
     pub edit_mode: bool,
     /// Disposition du clavier, pour le clavier piano et les chiffres.
     pub layout: Layout,
-    /// Vrai si le terminal signale le relâchement des touches : les notes écoutées s'arrêtent
-    /// alors au relâchement, sinon au bout de `JAM_TIMEOUT`.
+    /// Vrai si le terminal annonce le relâchement des touches.
     pub key_release: bool,
+    /// Vrai dès qu'un relâchement est réellement arrivé : certains terminaux (ou un
+    /// multiplexeur entre les deux) annoncent le protocole sans transmettre les relâchements.
+    /// Tant qu'on n'en a pas vu, les notes écoutées s'arrêtent au bout de `JAM_TIMEOUT`.
+    releases_seen: bool,
     /// Notes en cours d'écoute, par voix d'écoute : touche et instant d'appui.
     jam: [Option<(char, Instant)>; JAM_VOICES],
     pub dialog: Option<Dialog>,
@@ -144,6 +147,7 @@ impl App {
             edit_mode: false,
             layout: keys::LAYOUTS[0],
             key_release: false,
+            releases_seen: false,
             jam: [None; JAM_VOICES],
             dialog: None,
             status: "? : aide".into(),
@@ -170,7 +174,7 @@ impl App {
     /// À chaque image : suit la lecture (le curseur se place sur la ligne jouée).
     pub fn tick(&mut self) {
         let mut r = self.audio.replayer.lock().unwrap();
-        if !self.key_release {
+        if !(self.key_release && self.releases_seen) {
             for (slot, jam) in self.jam.iter_mut().enumerate() {
                 if jam.is_some_and(|(_, since)| since.elapsed() > JAM_TIMEOUT) {
                     r.jam_stop(slot);
@@ -210,6 +214,7 @@ impl App {
 
     pub fn handle_key(&mut self, key: KeyEvent) {
         if key.kind == KeyEventKind::Release {
+            self.releases_seen = true;
             if let KeyCode::Char(c) = key.code {
                 self.release_jam(c.to_ascii_lowercase());
             }
@@ -309,7 +314,14 @@ impl App {
                 .lock()
                 .unwrap()
                 .play(self.position, true),
-            Stop => self.audio.replayer.lock().unwrap().stop(),
+            Stop => {
+                let mut r = self.audio.replayer.lock().unwrap();
+                r.stop();
+                for slot in 0..JAM_VOICES {
+                    r.jam_stop(slot);
+                }
+                self.jam = [None; JAM_VOICES];
+            }
             ToggleEdit => {
                 self.edit_mode = !self.edit_mode;
                 self.status = if self.edit_mode {
@@ -486,12 +498,15 @@ impl App {
         self.row = (self.row + 1) % 64;
     }
 
-    /// Fait entendre une note sur une voix d'écoute libre (ou la plus ancienne).
+    /// Fait entendre une note : sur la voix d'écoute de la même touche si elle sonne déjà
+    /// (sinon deux copies du même son s'additionneraient), ou sur une voix libre, ou sur la
+    /// plus ancienne.
     fn play_jam(&mut self, key: char, sample: usize, period: u16) {
         let slot = self
             .jam
             .iter()
-            .position(Option::is_none)
+            .position(|j| j.is_some_and(|(k, _)| k == key))
+            .or_else(|| self.jam.iter().position(Option::is_none))
             .unwrap_or_else(|| {
                 (0..JAM_VOICES)
                     .min_by_key(|&i| self.jam[i].map(|(_, t)| t))
@@ -703,7 +718,7 @@ impl App {
             }
             Preview => {
                 let index = (self.octave as usize).min(2) * 12;
-                self.play_jam('\0', n, note::PERIODS[index]);
+                self.play_jam('p', n, note::PERIODS[index]);
             }
             Delete => self.set_sample(format!("sample {n:02} vidé"), Sample::default()),
             Enter => self.focus = Focus::Pattern,
@@ -973,9 +988,36 @@ mod tests {
     }
 
     #[test]
+    fn same_key_reuses_its_voice_and_escape_silences_everything() {
+        let mut a = app();
+        press(&mut a, KeyCode::F(7));
+        typing(&mut a, "ppp");
+        assert_eq!(a.jam.iter().flatten().count(), 1);
+        press(&mut a, KeyCode::F(5));
+        typing(&mut a, "zc");
+        assert_eq!(a.jam.iter().flatten().count(), 3);
+        press(&mut a, KeyCode::Esc);
+        assert_eq!(a.jam.iter().flatten().count(), 0);
+    }
+
+    #[test]
+    fn notes_time_out_until_a_release_is_actually_received() {
+        let mut a = app();
+        a.key_release = true;
+        typing(&mut a, "z");
+        a.jam[0] = a.jam[0].map(|(k, t)| (k, t - JAM_TIMEOUT * 2));
+        a.tick();
+        assert!(
+            a.jam[0].is_none(),
+            "aucun relâchement reçu : la note doit s'arrêter d'elle-même"
+        );
+    }
+
+    #[test]
     fn listened_notes_use_jam_voices_and_stop_on_release() {
         let mut a = app();
         a.key_release = true;
+        a.releases_seen = true;
         typing(&mut a, "zc");
         assert_eq!(a.jam.iter().flatten().count(), 2);
         assert_eq!(cell_text(&a, 0, 0), "... .. ...");
