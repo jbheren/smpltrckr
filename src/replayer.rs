@@ -111,13 +111,13 @@ pub struct Replayer {
     running: bool,
     /// Rejoue la même position en boucle (lecture d'un pattern).
     loop_pattern: bool,
-    /// Voix réservées aux notes jouées au clavier pour les écouter, mixées au centre
-    /// par-dessus le morceau : la lecture ne les interrompt pas.
+    /// Notes jouées au clavier pour les écouter : une par voie, rendue exactement comme la
+    /// voie la jouerait (même volume, même place dans la stéréo), mais à part, pour que la
+    /// lecture du morceau ne l'interrompe pas.
     jam: Vec<Voice>,
+    /// Sortie des notes écoutées pour la trame courante, par voie.
+    jam_out: Vec<f32>,
 }
-
-/// Nombre de notes jouables en même temps au clavier.
-pub const JAM_VOICES: usize = 4;
 
 impl Replayer {
     pub fn new(song: Arc<Song>, rate: u32) -> Self {
@@ -142,7 +142,8 @@ impl Replayer {
             ended: false,
             running: true,
             loop_pattern: false,
-            jam: vec![Voice::default(); JAM_VOICES],
+            jam: vec![Voice::default(); channels],
+            jam_out: vec![0.0; channels],
             song,
         };
         replayer.skip_invalid_positions();
@@ -218,14 +219,15 @@ impl Replayer {
         self.voices.iter_mut().for_each(|v| v.playing = false);
     }
 
-    /// Joue une note pour l'écouter, sur une voix d'écoute (0 à `JAM_VOICES - 1`), que la
-    /// lecture soit lancée ou non.
-    pub fn jam(&mut self, slot: usize, sample: usize, period: u16) {
+    /// Joue une note pour l'écouter sur une voie, lecture lancée ou non. Elle sonne comme si
+    /// elle était écrite dans le pattern : jusqu'à la note suivante, la fin du sample, ou
+    /// `jam_stop`.
+    pub fn jam(&mut self, voice: usize, sample: usize, period: u16) {
         let song = self.song.clone();
         let Some(s) = song.samples.get(sample.wrapping_sub(1)) else {
             return;
         };
-        let Some(v) = self.jam.get_mut(slot) else {
+        let Some(v) = self.jam.get_mut(voice) else {
             return;
         };
         *v = Voice {
@@ -240,11 +242,9 @@ impl Replayer {
         trigger(v, &song);
     }
 
-    /// Arrête une voix d'écoute (touche relâchée).
-    pub fn jam_stop(&mut self, slot: usize) {
-        if let Some(v) = self.jam.get_mut(slot) {
-            v.playing = false;
-        }
+    /// Arrête toutes les notes écoutées.
+    pub fn jam_stop(&mut self) {
+        self.jam.iter_mut().for_each(|v| v.playing = false);
     }
 
     /// État d'une voie : sample, période jouée et volume joué (pour l'affichage et le débogage).
@@ -259,11 +259,13 @@ impl Replayer {
         let master = 2.0 / channels.max(2) as f32;
         for frame in out.as_chunks_mut::<2>().0 {
             self.next_frame();
+            for (voice, out) in self.jam.iter_mut().zip(&mut self.jam_out) {
+                *out = render_voice(voice, &self.song, self.rate);
+            }
             let (mut left, mut right) = (0.0, 0.0);
-            for (v, &x) in self.voice_out.iter().enumerate() {
-                if !self.mixer.audible(v) {
-                    continue;
-                }
+            for (v, (&x, &jam)) in self.voice_out.iter().zip(&self.jam_out).enumerate() {
+                // La note écoutée s'entend même si la voie est coupée : on l'a demandée.
+                let x = if self.mixer.audible(v) { x + jam } else { jam };
                 let x = x * self.mixer.volume[v];
                 // Panoramique Amiga : voies 1 et 4 à gauche, 2 et 3 à droite, et ainsi de suite.
                 let towards_left = matches!(v % 4, 0 | 3);
@@ -276,14 +278,13 @@ impl Replayer {
                 left += x * l;
                 right += x * r;
             }
-            for voice in &mut self.jam {
-                let x = render_voice(voice, &self.song, self.rate) * 0.5;
-                left += x;
-                right += x;
-            }
             frame[0] = (left * master).clamp(-1.0, 1.0);
             frame[1] = (right * master).clamp(-1.0, 1.0);
             if let Some(monitor) = &self.monitor {
+                // L'oscilloscope d'une voie montre aussi la note écoutée.
+                for (out, &jam) in self.voice_out.iter_mut().zip(&self.jam_out) {
+                    *out += jam;
+                }
                 monitor.push(&self.voice_out, (frame[0] + frame[1]) / 2.0);
             }
         }
@@ -889,7 +890,7 @@ mod tests {
         r.process(&mut out);
         assert!(out.iter().any(|&x| x != 0.0));
         assert_eq!(r.position(), (0, 0));
-        r.jam_stop(1);
+        r.jam_stop();
         r.process(&mut out);
         assert!(out.iter().all(|&x| x == 0.0));
     }

@@ -119,49 +119,6 @@ fn localectl_layout() -> Option<Layout> {
     Layout::by_name(line.split(':').nth(1)?.trim().split(',').next()?)
 }
 
-/// Répétition automatique du clavier : délai avant la première répétition et intervalle entre
-/// deux répétitions. Lue dans Hyprland ; sinon, les valeurs courantes (600 ms, 25 par seconde).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct KeyRepeat {
-    pub delay: std::time::Duration,
-    pub interval: std::time::Duration,
-}
-
-impl Default for KeyRepeat {
-    fn default() -> Self {
-        Self {
-            delay: std::time::Duration::from_millis(600),
-            interval: std::time::Duration::from_millis(40),
-        }
-    }
-}
-
-pub fn detect_key_repeat() -> KeyRepeat {
-    let option = |name: &str| -> Option<u64> {
-        let out = std::process::Command::new("hyprctl")
-            .args(["-j", "getoption", name])
-            .output()
-            .ok()?;
-        let text = String::from_utf8(out.stdout).ok()?;
-        text.split("\"int\":")
-            .nth(1)?
-            .trim_start()
-            .split([',', '}', ' '])
-            .next()?
-            .parse()
-            .ok()
-    };
-    let default = KeyRepeat::default();
-    KeyRepeat {
-        delay: option("input:repeat_delay").map_or(default.delay, std::time::Duration::from_millis),
-        interval: option("input:repeat_rate")
-            .filter(|&r| r > 0)
-            .map_or(default.interval, |r| {
-                std::time::Duration::from_millis(1000 / r)
-            }),
-    }
-}
-
 /// Zone qui reçoit les touches de navigation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Focus {

@@ -14,23 +14,13 @@ use super::keys::{self, Action, Focus, Layout};
 use crate::editor::{Change, Editor, Origin, journal_path, journal_text};
 use crate::format::protracker;
 use crate::monitor::Monitor;
-use crate::replayer::{JAM_VOICES, Mixer, Replayer};
+use crate::replayer::{Mixer, Replayer};
 use crate::song::{Cell, Pattern, Sample, Song};
 use crate::{note, samples};
 
-/// Une note jouée au clavier pour l'écouter.
-#[derive(Debug, Clone, Copy)]
-struct JamNote {
-    key: char,
-    /// Premier appui (pas les répétitions automatiques).
-    pressed: Instant,
-    /// Dernier appui ou dernière répétition.
-    last: Instant,
-    /// Des répétitions automatiques sont arrivées : la touche est tenue.
-    held: bool,
-    /// Le sample boucle : il faut l'arrêter, sinon il sonne indéfiniment.
-    looped: bool,
-}
+/// Un nouvel appui sur la même touche plus rapide que ça est une répétition automatique
+/// (touche tenue) : il ne relance pas la note.
+const REPEAT_GAP: Duration = Duration::from_millis(150);
 
 /// Colonne du curseur dans une cellule `C-3 01 A04`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,16 +113,9 @@ pub struct App {
     pub edit_mode: bool,
     /// Disposition du clavier, pour le clavier piano et les chiffres.
     pub layout: Layout,
-    /// Vrai si le terminal annonce le relâchement des touches.
-    pub key_release: bool,
-    /// Vrai dès qu'un relâchement est réellement arrivé : certains terminaux (ou un
-    /// multiplexeur entre les deux) annoncent le protocole sans transmettre les relâchements.
-    /// Tant qu'on n'en a pas vu, on déduit le relâchement de la répétition automatique.
-    releases_seen: bool,
-    /// Réglages de répétition du clavier, pour reconnaître une touche tenue.
-    pub key_repeat: keys::KeyRepeat,
-    /// Notes en cours d'écoute, par voix d'écoute.
-    jam: [Option<JamNote>; JAM_VOICES],
+    /// Dernière touche de note et instant de son dernier appui (pour ignorer la répétition
+    /// automatique d'une touche tenue).
+    last_note: Option<(char, Instant)>,
     pub dialog: Option<Dialog>,
     pub status: String,
     pub quit: bool,
@@ -159,10 +142,7 @@ impl App {
             sample: 1,
             edit_mode: false,
             layout: keys::LAYOUTS[0],
-            key_release: false,
-            releases_seen: false,
-            key_repeat: keys::KeyRepeat::default(),
-            jam: [None; JAM_VOICES],
+            last_note: None,
             dialog: None,
             status: "? : aide".into(),
             quit: false,
@@ -187,27 +167,7 @@ impl App {
 
     /// À chaque image : suit la lecture (le curseur se place sur la ligne jouée).
     pub fn tick(&mut self) {
-        let mut r = self.audio.replayer.lock().unwrap();
-        if !(self.key_release && self.releases_seen) {
-            // Sans relâchement : une touche tenue se répète ; quand les répétitions cessent (ou
-            // n'arrivent jamais, pour une simple frappe), la touche a été relâchée.
-            let repeat = self.key_repeat;
-            for (slot, jam) in self.jam.iter_mut().enumerate() {
-                let Some(note) = jam else { continue };
-                let released = if note.held {
-                    note.last.elapsed() > (repeat.interval * 4).max(Duration::from_millis(100))
-                } else {
-                    note.pressed.elapsed() > repeat.delay + Duration::from_millis(120)
-                };
-                if released {
-                    // Un sample sans boucle va jusqu'au bout, comme une percussion.
-                    if note.looped {
-                        r.jam_stop(slot);
-                    }
-                    *jam = None;
-                }
-            }
-        }
+        let r = self.audio.replayer.lock().unwrap();
         self.running = r.is_running();
         self.tempo = r.tempo();
         if self.running {
@@ -240,10 +200,6 @@ impl App {
 
     pub fn handle_key(&mut self, key: KeyEvent) {
         if key.kind == KeyEventKind::Release {
-            self.releases_seen = true;
-            if let KeyCode::Char(c) = key.code {
-                self.release_jam(c.to_ascii_lowercase());
-            }
             return;
         }
         // Une touche de note tenue se répète : on ne relance pas la note.
@@ -343,10 +299,7 @@ impl App {
             Stop => {
                 let mut r = self.audio.replayer.lock().unwrap();
                 r.stop();
-                for slot in 0..JAM_VOICES {
-                    r.jam_stop(slot);
-                }
-                self.jam = [None; JAM_VOICES];
+                r.jam_stop();
             }
             ToggleEdit => {
                 self.edit_mode = !self.edit_mode;
@@ -482,10 +435,14 @@ impl App {
                 return;
             }
             let period = note::PERIODS[index as usize];
-            if self.repeated_jam(c) {
+            if self.repeated(c) {
                 return;
             }
-            self.play_jam(c, self.sample, period);
+            self.audio
+                .replayer
+                .lock()
+                .unwrap()
+                .jam(self.voice, self.sample, period);
             if self.edit_mode {
                 let sample = self.sample as u8;
                 self.edit_cell(&note::name(index as usize), |cell, _| {
@@ -527,74 +484,14 @@ impl App {
         self.row = (self.row + 1) % 64;
     }
 
-    /// Vrai si cet appui est une répétition automatique d'une touche tenue (à ignorer : la
-    /// note continue). Avec le protocole de relâchement, les répétitions sont déjà marquées.
-    fn repeated_jam(&mut self, key: char) -> bool {
-        let repeat = self.key_repeat;
-        let edit_mode = self.edit_mode;
-        let Some(note) = self.jam.iter_mut().flatten().find(|n| n.key == key) else {
-            return false;
-        };
+    /// Vrai si cet appui répète automatiquement la touche précédente (touche tenue).
+    fn repeated(&mut self, key: char) -> bool {
         let now = Instant::now();
-        let since_last = now - note.last;
-        let since_press = now - note.pressed;
-        // Personne ne frappe deux fois la même touche en moins de deux intervalles de répétition.
-        let fast = since_last < (repeat.interval * 2).max(Duration::from_millis(60));
-        // La première répétition arrive après le délai de répétition. En mode écoute seulement :
-        // en édition, une vraie frappe à ce rythme doit écrire sa note.
-        let first_repeat = !edit_mode
-            && !note.held
-            && since_press + Duration::from_millis(40) >= repeat.delay
-            && since_press <= repeat.delay + Duration::from_millis(80);
-        if fast || first_repeat {
-            note.last = now;
-            note.held = true;
-            return true;
-        }
-        false
-    }
-
-    /// Fait entendre une note : sur la voix d'écoute de la même touche si elle sonne déjà
-    /// (sinon deux copies du même son s'additionneraient), ou sur une voix libre, ou sur la
-    /// plus ancienne.
-    fn play_jam(&mut self, key: char, sample: usize, period: u16) {
-        let slot = self
-            .jam
-            .iter()
-            .position(|j| j.is_some_and(|n| n.key == key))
-            .or_else(|| self.jam.iter().position(Option::is_none))
-            .unwrap_or_else(|| {
-                (0..JAM_VOICES)
-                    .min_by_key(|&i| self.jam[i].map(|n| n.pressed))
-                    .unwrap()
-            });
-        self.audio
-            .replayer
-            .lock()
-            .unwrap()
-            .jam(slot, sample, period);
-        let looped = self
-            .song()
-            .samples
-            .get(sample.wrapping_sub(1))
-            .is_some_and(|s| s.loop_length > 1);
-        let now = Instant::now();
-        self.jam[slot] = Some(JamNote {
-            key,
-            pressed: now,
-            last: now,
-            held: false,
-            looped,
-        });
-    }
-
-    fn release_jam(&mut self, key: char) {
-        for (slot, jam) in self.jam.iter_mut().enumerate() {
-            if jam.is_some_and(|n| n.key == key) {
-                self.audio.replayer.lock().unwrap().jam_stop(slot);
-                *jam = None;
-            }
-        }
+        let repeat = self
+            .last_note
+            .is_some_and(|(k, t)| k == key && now - t < REPEAT_GAP);
+        self.last_note = Some((key, now));
+        repeat
     }
 
     pub fn current_cell(&self) -> Cell {
@@ -786,8 +683,12 @@ impl App {
             }
             Preview => {
                 let index = (self.octave as usize).min(2) * 12;
-                if !self.repeated_jam('p') {
-                    self.play_jam('p', n, note::PERIODS[index]);
+                if !self.repeated('p') {
+                    self.audio
+                        .replayer
+                        .lock()
+                        .unwrap()
+                        .jam(self.voice, n, note::PERIODS[index]);
                 }
             }
             Delete => self.set_sample(format!("sample {n:02} vidé"), Sample::default()),
@@ -951,7 +852,7 @@ mod tests {
         typing(&mut a, "z");
         assert_eq!(cell_text(&a, 0, 0), "... .. ...");
         // Une vraie frappe suivante arrive bien plus tard qu'une répétition automatique.
-        a.jam = [None; JAM_VOICES];
+        a.last_note = None;
         press(&mut a, KeyCode::Char(' '));
         a.sample = 5;
         typing(&mut a, "zq");
@@ -1060,122 +961,60 @@ mod tests {
     }
 
     #[test]
-    fn same_key_reuses_its_voice_and_escape_silences_everything() {
+    fn every_azerty_piano_key_writes_its_note() {
         let mut a = app();
-        press(&mut a, KeyCode::F(7));
-        typing(&mut a, "p");
-        a.jam = a.jam.map(|j| {
-            j.map(|n| JamNote {
-                last: n.last - Duration::from_secs(1),
-                pressed: n.pressed - Duration::from_secs(1),
-                ..n
-            })
-        });
-        typing(&mut a, "p");
-        assert_eq!(a.jam.iter().flatten().count(), 1);
-        press(&mut a, KeyCode::F(5));
-        typing(&mut a, "zc");
-        assert_eq!(a.jam.iter().flatten().count(), 3);
-        press(&mut a, KeyCode::Esc);
-        assert_eq!(a.jam.iter().flatten().count(), 0);
-    }
-
-    /// Simule un clavier qui se répète au bout de 250 ms, 40 fois par seconde.
-    fn with_repeat(mut a: App) -> App {
-        a.key_repeat = keys::KeyRepeat {
-            delay: Duration::from_millis(250),
-            interval: Duration::from_millis(25),
-        };
-        a
-    }
-
-    fn age(a: &mut App, slot: usize, ms: u64) {
-        let d = Duration::from_millis(ms);
-        a.jam[slot] = a.jam[slot].map(|n| JamNote {
-            pressed: n.pressed - d,
-            last: n.last - d,
-            ..n
-        });
+        a.layout = keys::Layout::by_name("azerty").unwrap();
+        a.octave = 1;
+        press(&mut a, KeyCode::Char(' '));
+        // Les 17 + 17 touches : rangée du bas et du milieu, puis rangées du haut.
+        let keys = "wsxdcvgbhnj,;l:m!aéz\"er(t-yèuiçoàp";
+        for (i, c) in keys.chars().enumerate() {
+            a.last_note = None;
+            a.row = 0;
+            press(&mut a, KeyCode::Char(c));
+            let semitone = if i < 17 { i } else { i - 17 + 12 };
+            assert_eq!(cell_text(&a, 0, 0), format!("{} 01 ...", note::name(semitone)), "touche {c:?}");
+        }
     }
 
     #[test]
-    fn held_key_repeats_do_not_retrigger_the_note() {
-        let mut a = with_repeat(app());
-        typing(&mut a, "z");
-        let first = a.jam[0].unwrap().pressed;
-        // Première répétition (250 ms) puis répétitions rapides : la note n'est pas relancée.
-        age(&mut a, 0, 250);
-        typing(&mut a, "z");
-        typing(&mut a, "zzz");
-        let note = a.jam[0].unwrap();
-        assert!(note.held);
-        assert!(note.pressed < first, "la note a été relancée");
-        assert_eq!(a.jam.iter().flatten().count(), 1);
-    }
-
-    #[test]
-    fn inferred_release_stops_looped_notes_only() {
-        let mut a = with_repeat(app());
-        let mut looped = crate::samples::generate("square", 32).unwrap();
-        looped.volume = 64;
-        a.editor.apply(
-            Origin::Keyboard,
-            "s1",
-            vec![a.editor.set_sample(1, looped).unwrap()],
-        );
-        a.editor.apply(
-            Origin::Keyboard,
-            "s2",
-            vec![
-                a.editor
-                    .set_sample(2, crate::samples::generate("kick", 32).unwrap())
-                    .unwrap(),
-            ],
-        );
-        a.sync();
-        typing(&mut a, "z");
-        a.sample = 2;
-        typing(&mut a, "x");
-        // Simple frappe : pas de répétition après le délai → relâchée.
-        age(&mut a, 0, 400);
-        age(&mut a, 1, 400);
-        a.tick();
-        assert!(a.jam.iter().all(Option::is_none));
-    }
-
-    #[test]
-    fn in_edit_mode_a_held_key_writes_one_note() {
-        let mut a = with_repeat(app());
+    fn held_key_does_not_retrigger_or_rewrite() {
+        let mut a = app();
         press(&mut a, KeyCode::Char(' '));
         typing(&mut a, "zzzz");
         assert_eq!(cell_text(&a, 0, 0), "C-2 01 ...");
         assert_eq!(cell_text(&a, 1, 0), "... .. ...");
+        // Plus tard, une vraie frappe de la même touche écrit bien sa note.
+        a.last_note = a.last_note.map(|(k, t)| (k, t - REPEAT_GAP * 2));
+        typing(&mut a, "z");
+        assert_eq!(cell_text(&a, 1, 0), "C-2 01 ...");
     }
 
     #[test]
-    fn listened_notes_use_jam_voices_and_stop_on_release() {
+    fn listened_note_sounds_on_the_cursor_voice_until_escape() {
         let mut a = app();
-        a.key_release = true;
-        a.releases_seen = true;
-        typing(&mut a, "zc");
-        assert_eq!(a.jam.iter().flatten().count(), 2);
-        assert_eq!(cell_text(&a, 0, 0), "... .. ...");
-        a.handle_key(KeyEvent::new_with_kind(
-            KeyCode::Char('z'),
-            KeyModifiers::NONE,
-            KeyEventKind::Release,
-        ));
-        assert_eq!(
-            a.jam.iter().flatten().map(|n| n.key).collect::<Vec<_>>(),
-            ['c']
+        let square = crate::samples::generate("square", 32).unwrap();
+        let change = a.editor.set_sample(1, square).unwrap();
+        a.apply("s1".into(), vec![change]);
+        a.voice = 2;
+        typing(&mut a, "z");
+        let peak = |a: &App| {
+            let mut r = a.audio.replayer.lock().unwrap();
+            let mut out = vec![0.0f32; 2 * 4800];
+            r.process(&mut out);
+            out.iter().fold(0.0f32, |m, x| m.max(x.abs()))
+        };
+        assert!(peak(&a) > 0.05, "la note doit sonner");
+        assert!(
+            peak(&a) > 0.05,
+            "un sample bouclé continue, comme dans le morceau"
         );
-        // Une touche tenue qui se répète ne relance rien.
-        a.handle_key(KeyEvent::new_with_kind(
-            KeyCode::Char('c'),
-            KeyModifiers::NONE,
-            KeyEventKind::Repeat,
-        ));
-        assert_eq!(a.jam.iter().flatten().count(), 1);
+        assert!(
+            a.audio.monitor.level(Some(2)) > 0.1,
+            "l'oscilloscope de la voie 3 la montre"
+        );
+        press(&mut a, KeyCode::Esc);
+        assert_eq!(peak(&a), 0.0);
     }
 
     #[test]

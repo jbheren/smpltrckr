@@ -8,11 +8,7 @@ mod view;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use ratatui::crossterm::event::{
-    self, Event, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
-    PushKeyboardEnhancementFlags,
-};
-use ratatui::crossterm::{execute, terminal};
+use ratatui::crossterm::event::{self, Event};
 
 use crate::format::protracker;
 use crate::song::Song;
@@ -38,21 +34,12 @@ pub fn run(file: Option<PathBuf>, layout: Option<String>) -> anyhow::Result<()> 
         })?,
         None => keys::detect_layout(),
     };
-    app.key_repeat = keys::detect_key_repeat();
     app.status = format!("clavier {} (F3 pour changer) · ? : aide", app.layout.name);
     if let Some(warning) = warning {
         app.status = warning;
     }
 
     let mut terminal = ratatui::init();
-    // Relâchement des touches (protocole clavier de kitty, pris en charge par foot, kitty,
-    // Ghostty…) : les notes écoutées s'arrêtent quand on lâche la touche.
-    app.key_release = terminal::supports_keyboard_enhancement().unwrap_or(false)
-        && execute!(
-            std::io::stdout(),
-            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::REPORT_EVENT_TYPES)
-        )
-        .is_ok();
     let result = (|| -> anyhow::Result<()> {
         while !app.quit {
             app.tick();
@@ -65,9 +52,6 @@ pub fn run(file: Option<PathBuf>, layout: Option<String>) -> anyhow::Result<()> 
         }
         Ok(())
     })();
-    if app.key_release {
-        let _ = execute!(std::io::stdout(), PopKeyboardEnhancementFlags);
-    }
     ratatui::restore();
     result
 }
