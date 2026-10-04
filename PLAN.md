@@ -288,7 +288,10 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 - **Jalon :** l'agent compose un `.xm` qui se lit correctement dans ft2-clone ou MilkyTracker.
 
 ### Phase 8 — Plus tard (à trier)
-- Disposition AZERTY, protocole clavier de kitty.
+- **Publication comme plugin Omarchy** : voir comment Omarchy distribue les applications tierces (paquet AUR, entrée de menu, lanceur, thème déjà suivi via `colors.toml`) et ce qu'il faut fournir.
+- macOS : essais, touche Option, AZERTY Mac, binaire dans la release (reporté après la v0.1.0).
+- Windows : un transport HTTP local avec jeton à la place du socket Unix.
+- Protocole clavier de kitty.
 - Éditeur de samples minimal (couper, normaliser, boucle), rééchantillonnage à l'import.
 - Outil `analyze` pour l'agent.
 - Format IT.
@@ -317,6 +320,7 @@ Plus aucune question ouverte pour l'instant.
 
 ## 9. Dépôt et commits
 
-- Le dépôt Git reste local jusqu'à ce que JB demande de le publier. Il sera alors publié sur `github.com/jbheren/smpltrckr`.
+- Le dépôt est public sur `github.com/jbheren/smpltrckr` depuis le 04/10/2026. La v0.1.0 y est publiée, avec des binaires Linux x86_64 et ARM64. Pousser un tag `vX.Y.Z` lance la compilation et crée la release.
+- Licences : GPL-3.0 pour le code (licence commerciale possible sur demande), CC BY-NC-SA 4.0 pour les morceaux de `sessions/`.
 - Les commits sont au nom de JB, sans ligne `Co-Authored-By: Claude` pour l'instant. La configuration Git globale du poste les signe déjà `jbheren <jb@lemaitrezor.com>`. Pour que GitHub relie les commits au compte, cette adresse doit être déclarée sur le compte `jbheren`.
-- Pour publier, il faudra se connecter à GitHub sur le poste (`gh auth login`). Ce n'est pas encore fait.
+- À faire dans les workflows : passer `actions/checkout` en v5 (Node 20 obsolète) et fixer la version d'Ubuntu de la CI.
