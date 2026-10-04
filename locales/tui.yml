@@ -278,8 +278,8 @@ view.listen:
   fr: écoute
   ja: 試聴
 view.octave_sample:
-  en: "oct %{octave}  sample %{sample} %{name}"
-  fr: "oct %{octave}  sample %{sample} %{name}"
+  en: "octave %{octave}  sample %{sample} %{name}"
+  fr: "octave %{octave}  sample %{sample} %{name}"
   ja: "オクターブ %{octave}  サンプル %{sample} %{name}"
 view.tempo:
   en: "speed %{speed} · %{bpm} BPM"
