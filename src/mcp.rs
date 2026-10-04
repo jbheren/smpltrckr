@@ -7,15 +7,20 @@
 //!   so the agent and the user edit the same song at the same time;
 //! - headless: no interface; `smpltrckr mcp` keeps its own session and works on files.
 //!
-//! `smpltrckr mcp` (`run`) is what MCP clients launch: it relays stdio to the open interface
-//! when there is one, and serves headless otherwise. The agent side speaks English.
+//! `smpltrckr mcp` (`run`) is what MCP clients launch: on each tool call it goes to the open
+//! interface when there is one, and serves headless otherwise. The agent side speaks English.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
-use rmcp::model::{Implementation, ServerCapabilities, ServerConfig};
+use rmcp::model::{
+    CallToolRequestParams, CallToolResponse, Implementation, ListToolsResult,
+    PaginatedRequestParams, ServerCapabilities, ServerConfig,
+};
+use rmcp::service::{RequestContext, RunningService};
+use rmcp::{ErrorData as McpError, RoleClient, RoleServer};
 use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -880,24 +885,68 @@ pub fn serve_live(jobs: mpsc::Sender<Job>) -> anyhow::Result<LiveServer> {
 }
 
 /// `smpltrckr mcp`: relays stdio to the open editor if there is one, else serves headless.
+/// What MCP clients launch (`smpltrckr mcp`): a server that sends each tool call to the open
+/// editor when there is one, and runs it headless otherwise. It looks for the editor again on
+/// every call, so the agent joins an editor opened after it, and falls back to headless when
+/// the editor closes. « Cap sur l'éditeur, s'il est à quai. »
+struct Bridge {
+    local: Tracker,
+    editor: tokio::sync::Mutex<Option<RunningService<RoleClient, ()>>>,
+}
+
+impl ServerHandler for Bridge {
+    fn get_info(&self) -> ServerConfig {
+        let info = self.local.get_info();
+        let instructions = info.instructions.clone().unwrap_or_default();
+        info.with_instructions(format!(
+            "{instructions} The user's editor may open or close during the session: when it is \
+             open you work LIVE on the song they have open, with them; otherwise you work headless \
+             on your own song. Call ping to know the current mode."
+        ))
+    }
+
+    async fn list_tools(
+        &self,
+        request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, McpError> {
+        self.local.list_tools(request, context).await
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, McpError> {
+        let mut editor = self.editor.lock().await;
+        if editor.is_none()
+            && let Ok(stream) = tokio::net::UnixStream::connect(socket_path()).await
+        {
+            *editor = ().serve(stream).await.ok();
+        }
+        if let Some(client) = editor.as_ref() {
+            match client.call_tool(request.clone()).await {
+                Ok(result) => return Ok(result.into()),
+                // The editor went away: forget it and work headless.
+                Err(_) => *editor = None,
+            }
+        }
+        drop(editor);
+        self.local.call_tool(request, context).await
+    }
+}
+
 pub fn run() -> anyhow::Result<()> {
     // The agent side speaks English, whatever the user's locale.
     crate::lang::set("en");
     tokio::runtime::Runtime::new()?.block_on(async {
-        if let Ok(stream) = tokio::net::UnixStream::connect(socket_path()).await {
-            let (mut from_editor, mut to_editor) = stream.into_split();
-            let (mut stdin, mut stdout) = (tokio::io::stdin(), tokio::io::stdout());
-            // Whichever side closes first ends the relay.
-            tokio::select! {
-                _ = tokio::io::copy(&mut stdin, &mut to_editor) => {}
-                _ = tokio::io::copy(&mut from_editor, &mut stdout) => {}
-            }
-            return Ok(());
-        }
         let session = Session::new(Song::new(""), None);
-        let service = Tracker::new(Host::Local(Arc::new(Mutex::new(session))))
-            .serve(rmcp::transport::stdio())
-            .await?;
+        let local = Tracker::new(Host::Local(Arc::new(Mutex::new(session))));
+        let bridge = Bridge {
+            local,
+            editor: tokio::sync::Mutex::new(None),
+        };
+        let service = bridge.serve(rmcp::transport::stdio()).await?;
         service.waiting().await?;
         Ok(())
     })

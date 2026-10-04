@@ -264,7 +264,7 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 - À l'écran : les cellules écrites par l'agent sont teintées de vert pendant 20 s, la ligne d'état dit ce qu'il vient de faire, une pastille « agent » s'allume dans l'en-tête, et le journal (F8) montre qui a fait quoi. Le son suit en direct, même pendant la lecture.
 - Côté agent : `song_info` donne la position de l'utilisateur. `song_new` et `song_load` sont refusés tant que l'utilisateur a des modifications non enregistrées. Tout reste en anglais, même avec une interface en français. Le guide a gagné une section « Live sessions ».
 - Vérifié : interface lancée dans un terminal simulé, client MCP passant par `smpltrckr mcp`. Ses notes arrivent dans le morceau, son `song_new` est refusé, son enregistrement va dans le fichier de l'utilisateur, le socket disparaît à la fermeture. Le repli sans écran fonctionne aussi. 70 tests.
-- Limite : `smpltrckr mcp` choisit son mode au lancement. Si l'agent démarre avant l'interface, il reste sans écran jusqu'à ce qu'on relance son serveur MCP (`/mcp` dans Claude Code).
+- `smpltrckr mcp` choisit son mode à chaque appel d'outil (04/10/2026). Il transmet l'appel à l'éditeur s'il est ouvert, sinon il l'exécute lui-même sans écran. L'agent rejoint donc un éditeur ouvert après lui, et retombe en mode sans écran si l'éditeur se ferme. Plus besoin de `/mcp`.
 
 ### Phase 6 — Le look
 - **Forme d'onde de chaque voie, dans sa colonne,** avec un effet de particules : les crêtes projettent des points (Braille ou demi-blocs) qui retombent et s'estompent. Master à droite, avec la forme d'onde du mixage final.
