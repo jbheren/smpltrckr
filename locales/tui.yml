@@ -283,7 +283,7 @@ view.octave_sample:
   ja: "オクターブ %{octave}  サンプル %{sample} %{name}"
 view.tempo:
   en: "speed %{speed} · %{bpm} BPM"
-  fr: "vit %{speed} · %{bpm} BPM"
+  fr: "vitesse %{speed} · %{bpm} BPM"
   ja: "スピード %{speed} · %{bpm} BPM"
 view.position:
   en: "pos %{position}/%{last}"
