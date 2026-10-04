@@ -61,13 +61,16 @@ What makes it different:
 
 ## Installation
 
-### Prebuilt binary (Linux x86_64)
+### Prebuilt binary (Linux x86_64 and ARM64)
 
-Download `smpltrckr` from the [latest release](../../releases/latest), then:
+Grab the archive for your machine from the [latest release](https://github.com/jbheren/smpltrckr/releases/latest):
 
 ```sh
-chmod +x smpltrckr
-./smpltrckr edit
+arch=$(uname -m)        # x86_64 or aarch64
+curl -LO https://github.com/jbheren/smpltrckr/releases/download/v0.1.0/smpltrckr-v0.1.0-$arch-linux.tar.gz
+tar xzf smpltrckr-v0.1.0-$arch-linux.tar.gz
+install -m 755 smpltrckr-v0.1.0-$arch-linux/smpltrckr ~/.local/bin/
+smpltrckr edit
 ```
 
 It needs `libasound.so.2` (ALSA), present on virtually every Linux system, PipeWire and

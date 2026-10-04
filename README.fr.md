@@ -61,13 +61,16 @@ Ce qui le distingue :
 
 ## Installation
 
-### Binaire prêt à l'emploi (Linux x86_64)
+### Binaire prêt à l'emploi (Linux x86_64 et ARM64)
 
-Télécharge `smpltrckr` depuis la [dernière release](../../releases/latest), puis :
+Récupère l'archive de ta machine dans la [dernière release](https://github.com/jbheren/smpltrckr/releases/latest) :
 
 ```sh
-chmod +x smpltrckr
-./smpltrckr edit
+arch=$(uname -m)        # x86_64 ou aarch64
+curl -LO https://github.com/jbheren/smpltrckr/releases/download/v0.1.0/smpltrckr-v0.1.0-$arch-linux.tar.gz
+tar xzf smpltrckr-v0.1.0-$arch-linux.tar.gz
+install -m 755 smpltrckr-v0.1.0-$arch-linux/smpltrckr ~/.local/bin/
+smpltrckr edit
 ```
 
 Il a besoin de `libasound.so.2` (ALSA), présent sur pratiquement tous les Linux, y compris avec
