@@ -32,6 +32,12 @@ const EFFECT_HELP: &[&str] = &[
     "E7", "E9", "EA", "EB", "EC", "ED", "EE", "F",
 ];
 
+/// `left`, then `right` pushed against the right edge of a `width`-column line.
+fn spread(left: &str, right: &str, width: usize) -> String {
+    let gap = width.saturating_sub(left.width() + right.width()).max(1);
+    format!("{left}{}{right}", " ".repeat(gap))
+}
+
 /// Pads `text` with spaces up to `width` terminal columns (a Japanese character takes two).
 fn pad_to(text: &str, width: usize) -> String {
     format!("{text}{}", " ".repeat(width.saturating_sub(text.width())))
@@ -241,13 +247,6 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
             t!("view.tempo", speed = app.tempo.0, bpm = app.tempo.1)
         )
         .fg(th.sample),
-        t!(
-            "view.position",
-            position = format!("{:02}", app.position),
-            last = format!("{:02}", song.order_list().len() - 1)
-        )
-        .into_owned()
-        .fg(th.dim),
     ]);
     f.render_widget(Line::from(spans), area);
 }
@@ -263,8 +262,19 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
         th.dim
     };
     let title = format!(" {} ", t!("view.pattern", pattern = format!("{p:02}")));
+    // The position in the order list sits in the top-right corner of the frame.
+    let position = t!(
+        "view.position",
+        position = format!("{:02}", app.position),
+        last = format!("{:02}", app.song().order_list().len() - 1)
+    );
     let block = Block::bordered()
         .title(title)
+        .title(
+            Line::from(format!(" {position} "))
+                .right_aligned()
+                .fg(th.dim),
+        )
         .border_style(Style::new().fg(border));
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -583,10 +593,8 @@ fn draw_orders(f: &mut Frame, app: &App, area: Rect) {
         .skip(first)
         .take(inner.height as usize)
         .map(|(i, &p)| {
-            let line = Line::from(format!(
-                " {i:02}  {}",
-                t!("view.pattern", pattern = format!("{p:02}"))
-            ));
+            let left = format!(" {i:02}  {}", t!("view.pattern_label"));
+            let line = Line::from(spread(&left, &format!("{p:02} "), inner.width as usize));
             if i == app.position {
                 line.style(Style::new().bg(app.theme.cursor_row).bold())
             } else {
@@ -614,7 +622,12 @@ fn draw_samples(f: &mut Frame, app: &App, area: Rect) {
         .take(inner.height as usize)
         .map(|(i, s)| {
             let empty = s.data.is_empty();
-            let text = format!(" {:02}  {:<16.16} {:>2}", i + 1, s.display_name(), s.volume);
+            let name: String = s.display_name().chars().take(18).collect();
+            let text = spread(
+                &format!(" {:02}  {name}", i + 1),
+                &format!("{:>2} ", s.volume),
+                inner.width as usize,
+            );
             let line = Line::from(text).fg(if empty { app.theme.dim } else { app.theme.text });
             if i + 1 == app.sample {
                 line.style(Style::new().bg(app.theme.cursor_row).bold())
@@ -904,6 +917,12 @@ mod tests {
         app.handle_key(KeyEvent::from(KeyCode::Tab));
         let s = render(&app);
         assert!(s.contains("0xy") && s.contains("Fxx"), "{s}");
+    }
+
+    #[test]
+    fn spread_pushes_the_last_column_right() {
+        assert_eq!(spread(" 00  pattern", "01 ", 20), " 00  pattern     01 ");
+        assert_eq!(spread("toolong", "x", 4), "toolong x");
     }
 
     #[test]

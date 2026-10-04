@@ -293,6 +293,10 @@ view.pattern:
   en: "pattern %{pattern}"
   fr: "pattern %{pattern}"
   ja: "パターン %{pattern}"
+view.pattern_label:
+  en: pattern
+  fr: pattern
+  ja: パターン
 view.voice:
   en: "voice %{voice}"
   fr: "voie %{voice}"
