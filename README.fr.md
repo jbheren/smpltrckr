@@ -36,6 +36,7 @@ particules · un serveur MCP pour qu'un agent compose, seul ou en direct avec to
 - [Sous le capot](#sous-le-capot)
 - [Morceaux d'exemple](#morceaux-dexemple)
 - [État et suite](#état-et-suite)
+- [Licence](#licence)
 
 ---
 
@@ -444,6 +445,19 @@ seul et en direct, thèmes, trois langues. La suite :
 - un petit éditeur de samples.
 
 Le plan complet, les décisions et les résultats sont dans [`PLAN.md`](PLAN.md).
+
+---
+
+## Licence
+
+- **Le code** est sous [GNU General Public License v3.0](LICENSE) (GPL-3.0-only) : tu peux l'utiliser,
+  l'étudier, le modifier et le partager, à condition que ce que tu distribues reste sous GPL, avec ses
+  sources. **Une licence commerciale** (pour l'intégrer dans un produit fermé) est possible sur demande
+  auprès de [@jbheren](https://github.com/jbheren).
+- **Les morceaux** de [`sessions/`](sessions) sont sous
+  [Creative Commons BY-NC-SA 4.0](sessions/LICENSE) : citer l'auteur, pas d'usage commercial, partage
+  dans les mêmes conditions.
+- **Tes morceaux** sont à toi : la licence du logiciel ne s'applique pas à la musique que tu fais avec.
 
 ---
 

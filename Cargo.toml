@@ -2,6 +2,12 @@
 name = "smpltrckr"
 version = "0.1.0"
 edition = "2024"
+description = "A ProTracker-style tracker for the terminal, played by hand or by an AI agent over MCP"
+license = "GPL-3.0-only"
+repository = "https://github.com/jbheren/smpltrckr"
+readme = "README.md"
+keywords = ["tracker", "protracker", "mod", "music", "mcp"]
+categories = ["multimedia::audio", "command-line-utilities"]
 
 [dependencies]
 anyhow = "1.0.104"

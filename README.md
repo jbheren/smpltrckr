@@ -36,6 +36,7 @@ an MCP server so an agent can compose, alone or live with you · English, French
 - [Under the hood](#under-the-hood)
 - [Example songs](#example-songs)
 - [Status and roadmap](#status-and-roadmap)
+- [License](#license)
 
 ---
 
@@ -439,6 +440,19 @@ three languages. Next:
 - a small sample editor.
 
 The full plan, decisions and results are in [`PLAN.md`](PLAN.md) (in French).
+
+---
+
+## License
+
+- **The code** is under the [GNU General Public License v3.0](LICENSE) (GPL-3.0-only): use it, study it,
+  change it and share it, as long as what you distribute stays under the GPL with its source.
+  **Commercial licensing** (for use in closed products) is available on request from
+  [@jbheren](https://github.com/jbheren).
+- **The songs** in [`sessions/`](sessions) are under
+  [Creative Commons BY-NC-SA 4.0](sessions/LICENSE): credit the author, no commercial use,
+  share alike.
+- **Your own songs** are yours: the license of the software does not apply to the music you make with it.
 
 ---
 
