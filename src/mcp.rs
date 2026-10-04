@@ -816,14 +816,21 @@ impl ServerHandler for Tracker {
 // --- Live sessions ---------------------------------------------------------------------------
 
 /// Socket where an open editor waits for agents: `SMPLTRCKR_SOCKET`, else
-/// `$XDG_RUNTIME_DIR/smpltrckr.sock`, else a per-user file in the temp folder.
+/// `$XDG_RUNTIME_DIR/smpltrckr.sock`, else `smpltrckr-$USER.sock` in the temp folder.
 pub fn socket_path() -> PathBuf {
     if let Some(path) = std::env::var_os("SMPLTRCKR_SOCKET") {
         return PathBuf::from(path);
     }
     match std::env::var_os("XDG_RUNTIME_DIR") {
         Some(dir) => PathBuf::from(dir).join("smpltrckr.sock"),
-        None => std::env::temp_dir().join(format!("smpltrckr-{}.sock", std::process::id())),
+        // No runtime dir (macOS, some Linux setups): a per-user name in the temp folder, the
+        // same for the editor and for the agent.
+        None => {
+            let user = std::env::var("USER")
+                .or_else(|_| std::env::var("LOGNAME"))
+                .unwrap_or_else(|_| "user".into());
+            std::env::temp_dir().join(format!("smpltrckr-{user}.sock"))
+        }
     }
 }
 
