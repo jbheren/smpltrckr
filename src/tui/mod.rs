@@ -4,6 +4,7 @@ mod app;
 mod dialog;
 mod effects;
 mod keys;
+mod particles;
 mod theme;
 mod view;
 

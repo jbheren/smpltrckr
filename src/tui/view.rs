@@ -13,10 +13,10 @@ use super::app::{AGENT_MARK, App, Field};
 use super::dialog::Dialog;
 use super::effects;
 use super::keys::{FOCUS_HINTS, Focus, HELP};
+use super::particles::Particle;
 use super::theme::Theme;
 use crate::editor::Origin;
 use crate::format::text::cell_to_text;
-use crate::monitor::{Monitor, SCOPE_LEN};
 
 /// Smallest voice column: "│ C-3 01 A04" plus a margin.
 const MIN_VOICE_WIDTH: u16 = 13;
@@ -24,7 +24,7 @@ const MIN_VOICE_WIDTH: u16 = 13;
 const SCOPE_HEIGHT: u16 = 4;
 /// Waveform zoom: a voice rarely goes past half scale, and the master is scaled down by the
 /// mix (2 / voice count).
-const VOICE_SCOPE_GAIN: f32 = 2.0;
+pub const VOICE_SCOPE_GAIN: f32 = 2.0;
 const MASTER_SCOPE_GAIN: f32 = 3.0;
 /// Effects shown on the second help page, one translation id each (`effect.help.<id>`).
 const EFFECT_HELP: &[&str] = &[
@@ -329,14 +329,10 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
             ..scopes
         };
         let color = if audible(v) { th.scope } else { th.dim };
-        let wave = triggered_scope(&app.audio.monitor, Some(v));
-        let lines = scope(
-            &wave,
-            scope_area.width as usize,
-            SCOPE_HEIGHT as usize,
-            VOICE_SCOPE_GAIN,
-            color,
-        );
+        let wave = app.audio.monitor.triggered_scope(Some(v));
+        let sparks = app.particles.voices.get(v).map_or(&[][..], |p| &p[..]);
+        let size = (scope_area.width as usize, SCOPE_HEIGHT as usize);
+        let lines = scope_with_particles(&wave, sparks, size, VOICE_SCOPE_GAIN, color, th);
         f.render_widget(Paragraph::new(lines), scope_area);
 
         let state = match (mixer.mute[v], mixer.solo[v]) {
@@ -356,18 +352,6 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(Line::from(state_line), states);
 }
 
-/// Recent samples of a voice (`None` = master), locked onto a rising zero crossing so the
-/// waveform stands still from one frame to the next.
-fn triggered_scope(monitor: &Monitor, voice: Option<usize>) -> Vec<f32> {
-    let mut all = vec![0.0f32; SCOPE_LEN];
-    monitor.scope(voice, &mut all);
-    let shown = SCOPE_LEN / 2;
-    let start = (1..SCOPE_LEN - shown)
-        .find(|&i| all[i - 1] <= 0.0 && all[i] > 0.0)
-        .unwrap_or(SCOPE_LEN - shown);
-    all[start..start + shown].to_vec()
-}
-
 /// Waveform in Braille characters (2 × 4 dots each). Each dot column covers several samples:
 /// draw the segment from their minimum to their maximum.
 fn scope(
@@ -377,12 +361,21 @@ fn scope(
     gain: f32,
     color: Color,
 ) -> Vec<Line<'static>> {
-    const BITS: [[u8; 4]; 2] = [[0x01, 0x02, 0x04, 0x40], [0x08, 0x10, 0x20, 0x80]];
+    let cells = wave_cells(samples, width, height, gain);
+    braille_lines(&cells, width, |b, _| (b, color))
+}
+
+/// Braille dot bits: `BITS[x % 2][y % 4]`.
+const BITS: [[u8; 4]; 2] = [[0x01, 0x02, 0x04, 0x40], [0x08, 0x10, 0x20, 0x80]];
+
+/// Waveform as Braille dot bits, one byte per character cell. Each dot column covers several
+/// samples: draw the segment from their minimum to their maximum.
+fn wave_cells(samples: &[f32], width: usize, height: usize, gain: f32) -> Vec<u8> {
     let (dots_w, dots_h) = (width * 2, height * 4);
-    if dots_w == 0 || samples.is_empty() {
-        return Vec::new();
-    }
     let mut cells = vec![0u8; width * height];
+    if dots_w == 0 || samples.is_empty() {
+        return cells;
+    }
     let to_y = |s: f32| {
         ((1.0 - ((s * gain).clamp(-1.0, 1.0) + 1.0) / 2.0) * (dots_h - 1) as f32).round() as usize
     };
@@ -405,19 +398,83 @@ fn scope(
         previous = Some(to_y(bucket[bucket.len() - 1]));
     }
     cells
+}
+
+/// A voice scope with its particles on top: the wave keeps its colour, cells holding only
+/// particles take the particle colour, bright when fresh and faded past half their life.
+fn scope_with_particles(
+    samples: &[f32],
+    particles: &[Particle],
+    (width, height): (usize, usize),
+    gain: f32,
+    color: Color,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let wave = wave_cells(samples, width, height, gain);
+    let (dots_w, dots_h) = (width * 2, height * 4);
+    let mut sparks = vec![0u8; width * height];
+    let mut freshest = vec![1.0f32; width * height];
+    for p in particles {
+        let (x, y) = (
+            (p.x * (dots_w as f32 - 1.0)).round(),
+            (p.y * (dots_h as f32 - 1.0)).round(),
+        );
+        if !(0.0..dots_w as f32).contains(&x) || !(0.0..dots_h as f32).contains(&y) {
+            continue;
+        }
+        let (x, y) = (x as usize, y as usize);
+        let cell = (y / 4) * width + x / 2;
+        sparks[cell] |= BITS[x % 2][y % 4];
+        freshest[cell] = freshest[cell].min(p.fade());
+    }
+    braille_lines(&wave, width, |bits, i| match (bits, sparks[i]) {
+        (0, 0) => (0, color),
+        (0, s) => (
+            s,
+            if freshest[i] < 0.5 {
+                theme.particle
+            } else {
+                theme.particle_fade
+            },
+        ),
+        (w, s) => (w | s, color),
+    })
+}
+
+/// Turns dot bits into lines of Braille characters; `paint(bits, index)` gives each cell its
+/// final bits and colour. Neighbouring cells of the same colour share a span.
+fn braille_lines(
+    cells: &[u8],
+    width: usize,
+    paint: impl Fn(u8, usize) -> (u8, Color),
+) -> Vec<Line<'static>> {
+    if width == 0 {
+        return Vec::new();
+    }
+    cells
         .chunks(width)
-        .map(|row| {
-            let text: String = row
-                .iter()
-                .map(|&b| {
-                    if b == 0 {
-                        ' '
-                    } else {
-                        char::from_u32(0x2800 + b as u32).unwrap()
-                    }
-                })
-                .collect();
-            Line::from(text).fg(color)
+        .enumerate()
+        .map(|(row, chunk)| {
+            let mut spans: Vec<Span<'static>> = Vec::new();
+            let mut run = String::new();
+            let mut run_color = None;
+            for (col, &b) in chunk.iter().enumerate() {
+                let (bits, color) = paint(b, row * width + col);
+                let c = if bits == 0 {
+                    ' '
+                } else {
+                    char::from_u32(0x2800 + bits as u32).unwrap()
+                };
+                if run_color.is_some_and(|rc| rc != color) {
+                    spans.push(std::mem::take(&mut run).fg(run_color.unwrap()));
+                }
+                run_color = Some(color);
+                run.push(c);
+            }
+            if let Some(color) = run_color {
+                spans.push(run.fg(color));
+            }
+            Line::from(spans)
         })
         .collect()
 }
@@ -543,7 +600,7 @@ fn draw_master(f: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
     let [wave, bar] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
-    let samples = triggered_scope(&app.audio.monitor, None);
+    let samples = app.audio.monitor.triggered_scope(None);
     let lines = scope(
         &samples,
         wave.width as usize,
@@ -842,6 +899,10 @@ mod tests {
             r.process(&mut buf);
         }
         app.tick();
+        // A few frames for the sparks to fly.
+        for _ in 0..4 {
+            app.particles.update(&app.audio.monitor, VOICE_SCOPE_GAIN, 0.05);
+        }
         println!("{}", render(&app));
     }
 }

@@ -13,6 +13,7 @@ use rust_i18n::t;
 
 use super::dialog::{Answer, Browser, Choice, Dialog, Outcome, Prompt, Purpose};
 use super::keys::{self, Action, Focus, Layout};
+use super::particles::Particles;
 use super::theme::{Theme, ThemeSource};
 use crate::editor::{Change, Origin, journal_path, journal_text};
 use crate::format::protracker;
@@ -134,6 +135,9 @@ pub struct App {
     pub agent_active: Option<Instant>,
     /// Colours, and where they come from (the Omarchy theme, checked once a second).
     pub theme: Theme,
+    /// Sparks thrown off the voice scopes, and when they last moved.
+    pub particles: Particles,
+    particles_moved: Instant,
     pub theme_source: Option<ThemeSource>,
     theme_checked: Instant,
     /// Number of agents connected to this editor (live sessions), if it listens for them.
@@ -165,6 +169,8 @@ impl App {
             agent_active: None,
             agents: None,
             theme: Theme::classic(),
+            particles: Particles::new(0),
+            particles_moved: Instant::now(),
             theme_source: None,
             theme_checked: Instant::now(),
             tempo: (6, 125),
@@ -204,6 +210,10 @@ impl App {
         });
         self.agent_marks
             .retain(|_, when| when.elapsed() < AGENT_MARK);
+        let dt = self.particles_moved.elapsed().as_secs_f32().min(0.1);
+        self.particles_moved = Instant::now();
+        self.particles
+            .update(&self.audio.monitor, super::view::VOICE_SCOPE_GAIN, dt);
         // Follow the Omarchy theme when the user switches it.
         if self.theme_checked.elapsed() >= Duration::from_secs(1) {
             self.theme_checked = Instant::now();

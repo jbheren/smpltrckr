@@ -66,6 +66,18 @@ impl Monitor {
         }
     }
 
+    /// The last half of the buffer of a voice (`None` = master), locked onto a rising zero
+    /// crossing so a scope drawn from it stands still from one frame to the next.
+    pub fn triggered_scope(&self, voice: Option<usize>) -> Vec<f32> {
+        let mut all = vec![0.0f32; SCOPE_LEN];
+        self.scope(voice, &mut all);
+        let shown = SCOPE_LEN / 2;
+        let start = (1..SCOPE_LEN - shown)
+            .find(|&i| all[i - 1] <= 0.0 && all[i] > 0.0)
+            .unwrap_or(SCOPE_LEN - shown);
+        all[start..start + shown].to_vec()
+    }
+
     /// Recent peak of a voice (`None` = master), from 0.0 to 1.0.
     pub fn level(&self, voice: Option<usize>) -> f32 {
         let mut recent = [0.0f32; 512];
