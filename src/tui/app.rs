@@ -23,6 +23,9 @@ use crate::session::{Cursor, Job, Session};
 use crate::song::{Cell, Pattern, Sample, Song};
 use crate::{note, samples};
 
+/// How long the splash screen stays up.
+const SPLASH: Duration = Duration::from_millis(2500);
+
 /// How long cells written by the agent stay highlighted.
 pub const AGENT_MARK: Duration = Duration::from_secs(20);
 
@@ -135,6 +138,10 @@ pub struct App {
     pub agent_active: Option<Instant>,
     /// Colours, and where they come from (the Omarchy theme, checked once a second).
     pub theme: Theme,
+    /// Splash screen shown since then (cleared by a key or after a while).
+    pub splash: Option<Instant>,
+    /// Full-screen demo mode (F9).
+    pub demo: bool,
     /// Sparks thrown off the voice scopes, and when they last moved.
     pub particles: Particles,
     particles_moved: Instant,
@@ -169,6 +176,8 @@ impl App {
             agent_active: None,
             agents: None,
             theme: Theme::classic(),
+            splash: None,
+            demo: false,
             particles: Particles::new(0),
             particles_moved: Instant::now(),
             theme_source: None,
@@ -210,6 +219,9 @@ impl App {
         });
         self.agent_marks
             .retain(|_, when| when.elapsed() < AGENT_MARK);
+        if self.splash.is_some_and(|t| t.elapsed() >= SPLASH) {
+            self.splash = None;
+        }
         let dt = self.particles_moved.elapsed().as_secs_f32().min(0.1);
         self.particles_moved = Instant::now();
         self.particles
@@ -305,6 +317,19 @@ impl App {
         let note_key =
             self.dialog.is_none() && self.focus == Focus::Pattern && self.field == Field::Note;
         if key.kind == KeyEventKind::Repeat && note_key && matches!(key.code, KeyCode::Char(_)) {
+            return;
+        }
+        // The splash goes away on the first key, which does nothing else.
+        if self.splash.take().is_some() {
+            return;
+        }
+        // Demo mode: F9 or Esc goes back, Enter plays or stops, the rest is ignored.
+        if self.demo {
+            match key.code {
+                KeyCode::F(9) | KeyCode::Esc => self.demo = false,
+                KeyCode::Enter => self.act(Action::PlaySong, false),
+                _ => {}
+            }
             return;
         }
         if let Some(dialog) = &mut self.dialog {
@@ -449,6 +474,13 @@ impl App {
             }
             Help => self.dialog = Some(Dialog::Help(0)),
             Journal => self.dialog = Some(Dialog::Journal),
+            Demo => {
+                self.demo = true;
+                let mut r = self.audio.replayer.lock().unwrap();
+                if !r.is_running() {
+                    r.play(self.position, false);
+                }
+            }
             NextLayout => {
                 self.layout = self.layout.next();
                 self.status = t!("status.layout", layout = self.layout.name).into_owned();
@@ -1213,6 +1245,23 @@ mod tests {
             (c.position, c.pattern, c.row, c.voice, c.playing),
             (0, 0, 7, 2, false)
         );
+    }
+
+    #[test]
+    fn splash_and_demo_take_keys_for_themselves() {
+        let mut a = app();
+        a.splash = Some(Instant::now());
+        press(&mut a, KeyCode::Char(' '));
+        assert!(
+            a.splash.is_none() && !a.edit_mode,
+            "the first key only closes the splash"
+        );
+        press(&mut a, KeyCode::F(9));
+        assert!(a.demo && a.audio.replayer.lock().unwrap().is_running());
+        press(&mut a, KeyCode::Char(' '));
+        assert!(!a.edit_mode, "demo mode ignores editing keys");
+        press(&mut a, KeyCode::Esc);
+        assert!(!a.demo);
     }
 
     #[test]

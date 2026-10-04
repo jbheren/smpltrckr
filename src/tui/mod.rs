@@ -5,6 +5,7 @@ mod dialog;
 mod effects;
 mod keys;
 mod particles;
+mod show;
 mod theme;
 mod view;
 
@@ -74,6 +75,7 @@ pub fn run(
         }
     };
 
+    app.splash = Some(std::time::Instant::now());
     let mut terminal = ratatui::init();
     let result = (|| -> anyhow::Result<()> {
         while !app.quit {

@@ -529,6 +529,14 @@ help.journal.what:
   en: "journal: who did what (you or the agent)"
   fr: "journal : qui a fait quoi (toi ou l'agent)"
   ja: "履歴: 誰が何をしたか（あなたかエージェントか）"
+help.demo.keys:
+  en: F9
+  fr: F9
+  ja: F9
+help.demo.what:
+  en: full-screen demo mode (scopes and sparks), F9 or Esc to come back
+  fr: mode démo plein écran (oscilloscopes et particules), F9 ou Échap pour revenir
+  ja: 全画面デモモード（オシロスコープと火花）、F9 か Esc で戻る
 help.quit.keys:
   en: Ctrl+Q
   fr: Ctrl+Q
@@ -537,3 +545,21 @@ help.quit.what:
   en: quit (twice if the song is not saved)
   fr: quitter (deux fois si le morceau n'est pas enregistré)
   ja: 終了（未保存なら 2 回押す）
+
+# --- Splash and demo -------------------------------------------------------------------------
+splash.tagline:
+  en: "a ProTracker-style tracker, played by hand or by an agent"
+  fr: "un tracker façon ProTracker, joué à la main ou par un agent"
+  ja: "ProTracker 風のトラッカー — 手でも、エージェントでも"
+splash.hint:
+  en: "any key to start"
+  fr: "une touche pour commencer"
+  ja: "何かキーを押して開始"
+demo.row:
+  en: "row %{row}"
+  fr: "ligne %{row}"
+  ja: "%{row} 行"
+demo.hint:
+  en: "F9 / Esc back · Enter play / stop"
+  fr: "F9 / Échap retour · Entrée lire / arrêter"
+  ja: "F9 / Esc 戻る · Enter 再生 / 停止"

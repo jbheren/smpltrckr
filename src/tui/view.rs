@@ -38,6 +38,12 @@ fn pad_to(text: &str, width: usize) -> String {
 }
 
 pub fn draw(f: &mut Frame, app: &App) {
+    if app.splash.is_some() {
+        return super::show::draw_splash(f, app);
+    }
+    if app.demo {
+        return super::show::draw_demo(f, app);
+    }
     let [header, body, hints, status] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(10),
@@ -402,7 +408,7 @@ fn wave_cells(samples: &[f32], width: usize, height: usize, gain: f32) -> Vec<u8
 
 /// A voice scope with its particles on top: the wave keeps its colour, cells holding only
 /// particles take the particle colour, bright when fresh and faded past half their life.
-fn scope_with_particles(
+pub(super) fn scope_with_particles(
     samples: &[f32],
     particles: &[Particle],
     (width, height): (usize, usize),
@@ -880,6 +886,31 @@ mod tests {
         assert_eq!(pad_to("vol", 6), "vol   ");
     }
 
+    /// Text captures of the splash and of the demo mode: `cargo test snapshot_show -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn snapshot_show() {
+        let path =
+            std::env::var("SNAPSHOT_MOD").unwrap_or("sessions/2026-10-03-kaze-no-uta/kaze-no-uta.mod".into());
+        let song = crate::format::protracker::read(&std::fs::read(&path).unwrap()).unwrap();
+        let mut app = App::new(song.clone(), Some(path.into()), Audio::silent(&song));
+        app.splash = Some(std::time::Instant::now());
+        println!("{}", render(&app));
+        app.splash = None;
+        app.demo = true;
+        {
+            let mut r = app.audio.replayer.lock().unwrap();
+            r.play(1, false);
+            let mut buf = vec![0.0f32; 2 * 48000 * 3];
+            r.process(&mut buf);
+        }
+        app.tick();
+        for _ in 0..4 {
+            app.particles.update(&app.audio.monitor, VOICE_SCOPE_GAIN, 0.05);
+        }
+        println!("{}", render(&app));
+    }
+
     /// Text capture of the screen on a real song: `cargo test snapshot -- --ignored --nocapture`.
     #[test]
     #[ignore]
@@ -901,7 +932,8 @@ mod tests {
         app.tick();
         // A few frames for the sparks to fly.
         for _ in 0..4 {
-            app.particles.update(&app.audio.monitor, VOICE_SCOPE_GAIN, 0.05);
+            app.particles
+                .update(&app.audio.monitor, VOICE_SCOPE_GAIN, 0.05);
         }
         println!("{}", render(&app));
     }
