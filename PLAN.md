@@ -276,8 +276,9 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 - **Couleurs** (`src/tui/theme.rs`) : l'interface utilise des rôles (texte, accent, notes, samples, effets, oscilloscopes, curseur, édition, agent…). Le thème Omarchy actif est lu dans `~/.local/state/omarchy/current/theme/colors.toml` et relu chaque seconde, ce qui suit un changement de thème à chaud. `--theme classic` garde les couleurs d'origine.
 - **Particules** (`src/tui/particles.rs`) : à chaque attaque d'une voie, la crête de son oscilloscope lâche une gerbe de points qui montent, retombent sous la gravité et s'estompent. Quelques étincelles partent aussi tant que la note sonne.
 - **Écran d'accueil** : le logo SMPLTRCKR en blocs, en dégradé de couleurs du thème, pendant 2,5 s ou jusqu'à la première touche.
-- **Mode démo** (F9) : plein écran, une grande bande par voie avec ses particules, le master en bas. La lecture se lance au besoin.
-- 75 tests. Les captures texte du logo et du mode démo sont dans des tests ignorés (`cargo test snapshot_show -- --ignored --nocapture`).
+- **Mode démo** (F9) : essayé puis retiré à la demande de JB, qui n'y voyait pas d'intérêt.
+- Retouches demandées par JB : nom SMPLTRCKR en capitales et en dégradé dans l'en-tête, une ligne vide entre l'en-tête et le pattern, auteur (@jbheren) sur l'accueil et en bas à droite, liste des samples alignée sur la liste d'ordre.
+- 76 tests. La capture texte de l'accueil est dans un test ignoré (`cargo test snapshot_show -- --ignored --nocapture`).
 
 ### Phase 7 — Le XM
 - Lecture et écriture du `.xm`, avec un aller-retour à l'octet près comme pour le `.mod`.

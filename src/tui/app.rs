@@ -140,8 +140,6 @@ pub struct App {
     pub theme: Theme,
     /// Splash screen shown since then (cleared by a key or after a while).
     pub splash: Option<Instant>,
-    /// Full-screen demo mode (F9).
-    pub demo: bool,
     /// Sparks thrown off the voice scopes, and when they last moved.
     pub particles: Particles,
     particles_moved: Instant,
@@ -177,7 +175,6 @@ impl App {
             agents: None,
             theme: Theme::classic(),
             splash: None,
-            demo: false,
             particles: Particles::new(0),
             particles_moved: Instant::now(),
             theme_source: None,
@@ -323,15 +320,6 @@ impl App {
         if self.splash.take().is_some() {
             return;
         }
-        // Demo mode: F9 or Esc goes back, Enter plays or stops, the rest is ignored.
-        if self.demo {
-            match key.code {
-                KeyCode::F(9) | KeyCode::Esc => self.demo = false,
-                KeyCode::Enter => self.act(Action::PlaySong, false),
-                _ => {}
-            }
-            return;
-        }
         if let Some(dialog) = &mut self.dialog {
             match dialog.handle(key) {
                 Outcome::Pending => {}
@@ -474,13 +462,6 @@ impl App {
             }
             Help => self.dialog = Some(Dialog::Help(0)),
             Journal => self.dialog = Some(Dialog::Journal),
-            Demo => {
-                self.demo = true;
-                let mut r = self.audio.replayer.lock().unwrap();
-                if !r.is_running() {
-                    r.play(self.position, false);
-                }
-            }
             NextLayout => {
                 self.layout = self.layout.next();
                 self.status = t!("status.layout", layout = self.layout.name).into_owned();
@@ -1248,7 +1229,7 @@ mod tests {
     }
 
     #[test]
-    fn splash_and_demo_take_keys_for_themselves() {
+    fn the_first_key_only_closes_the_splash() {
         let mut a = app();
         a.splash = Some(Instant::now());
         press(&mut a, KeyCode::Char(' '));
@@ -1256,12 +1237,6 @@ mod tests {
             a.splash.is_none() && !a.edit_mode,
             "the first key only closes the splash"
         );
-        press(&mut a, KeyCode::F(9));
-        assert!(a.demo && a.audio.replayer.lock().unwrap().is_running());
-        press(&mut a, KeyCode::Char(' '));
-        assert!(!a.edit_mode, "demo mode ignores editing keys");
-        press(&mut a, KeyCode::Esc);
-        assert!(!a.demo);
     }
 
     #[test]

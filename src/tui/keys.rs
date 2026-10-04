@@ -154,7 +154,6 @@ pub enum Action {
     SetTempo,
     Help,
     Journal,
-    Demo,
     NextLayout,
     // Moves (depending on the active zone)
     Up,
@@ -223,7 +222,6 @@ pub fn action(key: KeyEvent, focus: Focus, layout: Layout) -> Option<Action> {
         KeyCode::F(6) => SetFocus(Focus::Orders),
         KeyCode::F(7) => SetFocus(Focus::Samples),
         KeyCode::F(8) => Journal,
-        KeyCode::F(9) => Demo,
         KeyCode::Char('[') => {
             if focus == Focus::Samples {
                 FinetuneDown
@@ -280,7 +278,7 @@ pub const FOCUS_HINTS: [&str; 4] = ["hint.edit", "hint.pattern", "hint.orders", 
 pub const HELP: &[&str] = &[
     "play", "loop", "stop", "edit", "notes", "octave", "layout", "sample", "move", "digits",
     "clear", "rows", "mute", "solo", "volume", "zones", "orders", "samples", "files", "undo",
-    "title", "tempo", "journal", "demo", "quit",
+    "title", "tempo", "journal", "quit",
 ];
 
 #[cfg(test)]

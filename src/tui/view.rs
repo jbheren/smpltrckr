@@ -41,10 +41,8 @@ pub fn draw(f: &mut Frame, app: &App) {
     if app.splash.is_some() {
         return super::show::draw_splash(f, app);
     }
-    if app.demo {
-        return super::show::draw_demo(f, app);
-    }
-    let [header, body, hints, status] = Layout::vertical([
+    let [header, _gap, body, hints, status] = Layout::vertical([
+        Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Min(10),
         Constraint::Length(2),
@@ -66,7 +64,20 @@ pub fn draw(f: &mut Frame, app: &App) {
     draw_samples(f, app, samples);
     draw_master(f, app, master);
     f.render_widget(Paragraph::new(hint_lines(app, hints.width as usize)), hints);
+    // Status on the left, the author in the bottom-right corner.
+    let author = super::show::AUTHOR;
+    let [status, corner] = Layout::horizontal([
+        Constraint::Min(10),
+        Constraint::Length(author.width() as u16 + 1),
+    ])
+    .areas(status);
     f.render_widget(Line::from(app.status.as_str()).fg(app.theme.text), status);
+    f.render_widget(
+        Line::from(author)
+            .fg(app.theme.dim)
+            .alignment(ratatui::layout::Alignment::Right),
+        corner,
+    );
 
     if let Some(dialog) = &app.dialog {
         draw_dialog(f, app, dialog);
@@ -153,6 +164,19 @@ fn panel(title: String, focused: bool, theme: &Theme) -> Block<'static> {
     Block::bordered().title(title).border_style(style)
 }
 
+/// The program name in capitals, coloured like the splash logo.
+fn logo_spans(theme: &Theme) -> Vec<Span<'static>> {
+    const NAME: &str = "SMPLTRCKR";
+    let last = (NAME.len() - 1) as f32;
+    NAME.chars()
+        .enumerate()
+        .map(|(i, c)| {
+            let color = super::show::gradient(theme.accent, theme.particle, i as f32 / last);
+            Span::from(c.to_string()).bold().fg(color)
+        })
+        .collect()
+}
+
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let th = &app.theme;
     let song = app.song();
@@ -193,9 +217,10 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         " ■ ".fg(th.dim)
     };
     let sample = &song.samples[app.sample - 1];
-    let line = Line::from(vec![
-        " smpltrckr ".bold().fg(th.on_accent).bg(th.accent),
-        format!(" {} ", song.display_title()).bold(),
+    let mut spans = vec![Span::raw(" ")];
+    spans.extend(logo_spans(th));
+    spans.extend([
+        format!("  {} ", song.display_title()).bold(),
         format!("{file}{} ", if app.session.dirty { " *" } else { "" }).fg(th.dim),
         play,
         mode,
@@ -224,7 +249,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         .into_owned()
         .fg(th.dim),
     ]);
-    f.render_widget(line, area);
+    f.render_widget(Line::from(spans), area);
 }
 
 fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
@@ -408,7 +433,7 @@ fn wave_cells(samples: &[f32], width: usize, height: usize, gain: f32) -> Vec<u8
 
 /// A voice scope with its particles on top: the wave keeps its colour, cells holding only
 /// particles take the particle colour, bright when fresh and faded past half their life.
-pub(super) fn scope_with_particles(
+fn scope_with_particles(
     samples: &[f32],
     particles: &[Particle],
     (width, height): (usize, usize),
@@ -589,7 +614,7 @@ fn draw_samples(f: &mut Frame, app: &App, area: Rect) {
         .take(inner.height as usize)
         .map(|(i, s)| {
             let empty = s.data.is_empty();
-            let text = format!("{:02} {:<16.16} {:>2}", i + 1, s.display_name(), s.volume);
+            let text = format!(" {:02}  {:<16.16} {:>2}", i + 1, s.display_name(), s.volume);
             let line = Line::from(text).fg(if empty { app.theme.dim } else { app.theme.text });
             if i + 1 == app.sample {
                 line.style(Style::new().bg(app.theme.cursor_row).bold())
@@ -806,7 +831,8 @@ mod tests {
         for expected in [
             "Space listen",
             "Alt+S solo",
-            "smpltrckr",
+            "SMPLTRCKR",
+            "@jbheren",
             "screen",
             "EDIT",
             "pattern 00",
@@ -886,28 +912,15 @@ mod tests {
         assert_eq!(pad_to("vol", 6), "vol   ");
     }
 
-    /// Text captures of the splash and of the demo mode: `cargo test snapshot_show -- --ignored --nocapture`.
+    /// Text capture of the splash: `cargo test snapshot_show -- --ignored --nocapture`.
     #[test]
     #[ignore]
     fn snapshot_show() {
-        let path =
-            std::env::var("SNAPSHOT_MOD").unwrap_or("sessions/2026-10-03-kaze-no-uta/kaze-no-uta.mod".into());
+        let path = std::env::var("SNAPSHOT_MOD")
+            .unwrap_or("sessions/2026-10-03-kaze-no-uta/kaze-no-uta.mod".into());
         let song = crate::format::protracker::read(&std::fs::read(&path).unwrap()).unwrap();
         let mut app = App::new(song.clone(), Some(path.into()), Audio::silent(&song));
         app.splash = Some(std::time::Instant::now());
-        println!("{}", render(&app));
-        app.splash = None;
-        app.demo = true;
-        {
-            let mut r = app.audio.replayer.lock().unwrap();
-            r.play(1, false);
-            let mut buf = vec![0.0f32; 2 * 48000 * 3];
-            r.process(&mut buf);
-        }
-        app.tick();
-        for _ in 0..4 {
-            app.particles.update(&app.audio.monitor, VOICE_SCOPE_GAIN, 0.05);
-        }
         println!("{}", render(&app));
     }
 
