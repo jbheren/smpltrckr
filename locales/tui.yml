@@ -29,6 +29,10 @@ status.unknown_layout:
   en: "unknown keyboard %{layout}: qwerty, azerty or qwertz"
   fr: "clavier inconnu %{layout} : qwerty, azerty ou qwertz"
   ja: "不明なキーボード %{layout}: qwerty、azerty、qwertz のいずれか"
+status.unknown_theme:
+  en: "unknown theme %{theme}: omarchy or classic"
+  fr: "thème inconnu %{theme} : omarchy ou classic"
+  ja: "不明なテーマ %{theme}: omarchy または classic"
 status.quit_unsaved:
   en: "song not saved: Ctrl+Q again to quit"
   fr: "morceau non enregistré : Ctrl+Q encore pour quitter"

@@ -4,6 +4,7 @@ mod app;
 mod dialog;
 mod effects;
 mod keys;
+mod theme;
 mod view;
 
 use std::path::PathBuf;
@@ -18,7 +19,11 @@ use crate::song::Song;
 use app::{App, Audio};
 
 /// Opens the editor on a file (created on first save if it does not exist yet).
-pub fn run(file: Option<PathBuf>, layout: Option<String>) -> anyhow::Result<()> {
+pub fn run(
+    file: Option<PathBuf>,
+    layout: Option<String>,
+    theme: Option<String>,
+) -> anyhow::Result<()> {
     let song = match &file {
         Some(path) if path.exists() => protracker::read(&std::fs::read(path)?)?,
         _ => Song::new(""),
@@ -38,6 +43,19 @@ pub fn run(file: Option<PathBuf>, layout: Option<String>) -> anyhow::Result<()> 
         None => keys::detect_layout(),
     };
     app.status = t!("status.welcome", layout = app.layout.name).into_owned();
+    // Colours: the active Omarchy theme when there is one, unless asked otherwise.
+    match theme.as_deref() {
+        None | Some("omarchy") => app.theme_source = theme::ThemeSource::omarchy(),
+        Some("classic") => {}
+        Some(other) => anyhow::bail!(t!("status.unknown_theme", theme = other)),
+    }
+    if let Some(theme) = app
+        .theme_source
+        .as_mut()
+        .and_then(theme::ThemeSource::changed)
+    {
+        app.theme = theme;
+    }
     if let Some(warning) = warning {
         app.status = warning;
     }

@@ -13,6 +13,7 @@ use rust_i18n::t;
 
 use super::dialog::{Answer, Browser, Choice, Dialog, Outcome, Prompt, Purpose};
 use super::keys::{self, Action, Focus, Layout};
+use super::theme::{Theme, ThemeSource};
 use crate::editor::{Change, Origin, journal_path, journal_text};
 use crate::format::protracker;
 use crate::monitor::Monitor;
@@ -131,6 +132,10 @@ pub struct App {
     pub agent_marks: HashMap<(usize, usize, usize), Instant>,
     /// Last time the agent changed something.
     pub agent_active: Option<Instant>,
+    /// Colours, and where they come from (the Omarchy theme, checked once a second).
+    pub theme: Theme,
+    pub theme_source: Option<ThemeSource>,
+    theme_checked: Instant,
     /// Number of agents connected to this editor (live sessions), if it listens for them.
     pub agents: Option<Arc<std::sync::atomic::AtomicUsize>>,
     pub tempo: (u32, u32),
@@ -159,6 +164,9 @@ impl App {
             agent_marks: HashMap::new(),
             agent_active: None,
             agents: None,
+            theme: Theme::classic(),
+            theme_source: None,
+            theme_checked: Instant::now(),
             tempo: (6, 125),
         }
     }
@@ -196,6 +204,13 @@ impl App {
         });
         self.agent_marks
             .retain(|_, when| when.elapsed() < AGENT_MARK);
+        // Follow the Omarchy theme when the user switches it.
+        if self.theme_checked.elapsed() >= Duration::from_secs(1) {
+            self.theme_checked = Instant::now();
+            if let Some(theme) = self.theme_source.as_mut().and_then(ThemeSource::changed) {
+                self.theme = theme;
+            }
+        }
     }
 
     /// Runs a job sent by the agent, then brings the screen and the sound up to date.

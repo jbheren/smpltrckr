@@ -34,6 +34,9 @@ enum Command {
         /// Keyboard layout: qwerty, azerty or qwertz (detected by default).
         #[arg(long, alias = "clavier")]
         keyboard: Option<String>,
+        /// Colours: omarchy (the active Omarchy theme, the default when there is one) or classic.
+        #[arg(long)]
+        theme: Option<String>,
     },
     /// Plays a test sound and measures audio latency and dropouts.
     Tone {
@@ -144,7 +147,11 @@ fn main() -> anyhow::Result<()> {
     };
     lang::set(language);
     match cli.command {
-        Command::Edit { file, keyboard } => tui::run(file, keyboard),
+        Command::Edit {
+            file,
+            keyboard,
+            theme,
+        } => tui::run(file, keyboard, theme),
         Command::Tone { seconds } => tone::run(seconds),
         Command::Mcp => mcp::run(),
         Command::Dump { file, pattern } => dump(&file, pattern),

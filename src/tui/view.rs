@@ -13,11 +13,11 @@ use super::app::{AGENT_MARK, App, Field};
 use super::dialog::Dialog;
 use super::effects;
 use super::keys::{FOCUS_HINTS, Focus, HELP};
+use super::theme::Theme;
 use crate::editor::Origin;
 use crate::format::text::cell_to_text;
 use crate::monitor::{Monitor, SCOPE_LEN};
 
-const DIM: Color = Color::DarkGray;
 /// Smallest voice column: "│ C-3 01 A04" plus a margin.
 const MIN_VOICE_WIDTH: u16 = 13;
 /// Scope height, in text rows (4 Braille dots per row).
@@ -60,7 +60,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     draw_samples(f, app, samples);
     draw_master(f, app, master);
     f.render_widget(Paragraph::new(hint_lines(app, hints.width as usize)), hints);
-    f.render_widget(Line::from(app.status.as_str()).fg(Color::Gray), status);
+    f.render_widget(Line::from(app.status.as_str()).fg(app.theme.text), status);
 
     if let Some(dialog) = &app.dialog {
         draw_dialog(f, app, dialog);
@@ -78,8 +78,8 @@ fn hint_lines(app: &App, width: usize) -> Vec<Line<'static>> {
         let cell = app.current_cell();
         if let Some(text) = effects::describe(cell.effect, cell.param) {
             return vec![Line::from(vec![
-                text.fg(Color::Magenta),
-                format!("   {}", t!("hint.effect_help")).fg(DIM),
+                text.fg(app.theme.effect),
+                format!("   {}", t!("hint.effect_help")).fg(app.theme.dim),
             ])];
         }
         let palette = if cell.effect == 0xE {
@@ -90,9 +90,9 @@ fn hint_lines(app: &App, width: usize) -> Vec<Line<'static>> {
         let prefix = if cell.effect == 0xE { "E" } else { "" };
         let groups = palette
             .into_iter()
-            .map(|(digit, name)| (format!("{prefix}{digit}"), name, Color::Magenta));
+            .map(|(digit, name)| (format!("{prefix}{digit}"), name, app.theme.effect));
         let lead = Some(format!("{} ", t!("hint.effects")));
-        return wrap_groups(lead, groups, width);
+        return wrap_groups(&app.theme, lead, groups, width);
     }
     let id = match app.focus {
         Focus::Pattern if app.edit_mode => FOCUS_HINTS[0],
@@ -103,13 +103,14 @@ fn hint_lines(app: &App, width: usize) -> Vec<Line<'static>> {
     let hints = t!(id);
     let groups = hints.split(" · ").map(|part| {
         let (key, what) = part.split_once(' ').unwrap_or((part, ""));
-        (key.to_string(), what.to_string(), Color::Cyan)
+        (key.to_string(), what.to_string(), app.theme.accent)
     });
-    wrap_groups(None, groups, width)
+    wrap_groups(&app.theme, None, groups, width)
 }
 
 /// Lays out "key action" groups over as many lines as needed, never splitting a group.
 fn wrap_groups(
+    theme: &Theme,
     lead: Option<String>,
     groups: impl Iterator<Item = (String, String, Color)>,
     width: usize,
@@ -119,7 +120,7 @@ fn wrap_groups(
     let mut used = 0;
     if let Some(lead) = lead {
         used = lead.width();
-        spans.push(lead.fg(DIM));
+        spans.push(lead.fg(theme.dim));
     }
     for (key, what, color) in groups {
         let group_width = key.width() + 1 + what.width();
@@ -132,7 +133,7 @@ fn wrap_groups(
             used += gap;
         }
         spans.push(key.fg(color));
-        spans.push(format!(" {what}").fg(DIM));
+        spans.push(format!(" {what}").fg(theme.dim));
         used += group_width;
     }
     if !spans.is_empty() {
@@ -141,12 +142,13 @@ fn wrap_groups(
     lines
 }
 
-fn panel(title: String, focused: bool) -> Block<'static> {
-    let style = Style::new().fg(if focused { Color::Cyan } else { DIM });
+fn panel(title: String, focused: bool, theme: &Theme) -> Block<'static> {
+    let style = Style::new().fg(if focused { theme.accent } else { theme.dim });
     Block::bordered().title(title).border_style(style)
 }
 
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {
+    let th = &app.theme;
     let song = app.song();
     let file = app
         .session
@@ -159,10 +161,10 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let mode = if app.edit_mode {
         format!(" {} ", t!("view.edit"))
             .bold()
-            .fg(Color::White)
-            .bg(Color::Red)
+            .fg(th.strong)
+            .bg(th.edit)
     } else {
-        format!(" {} ", t!("view.listen")).fg(DIM)
+        format!(" {} ", t!("view.listen")).fg(th.dim)
     };
     let agents = app
         .agents
@@ -175,20 +177,20 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         (0, _) => "".into(),
         (_, true) => format!(" {} ", t!("view.agent"))
             .bold()
-            .fg(Color::Black)
-            .bg(Color::Green),
-        (_, false) => format!(" {} ", t!("view.agent")).fg(Color::Green),
+            .fg(th.on_accent)
+            .bg(th.agent),
+        (_, false) => format!(" {} ", t!("view.agent")).fg(th.agent),
     };
     let play = if app.running {
-        " ▶ ".fg(Color::Black).bg(Color::Green)
+        " ▶ ".fg(th.on_accent).bg(th.playing)
     } else {
-        " ■ ".fg(DIM)
+        " ■ ".fg(th.dim)
     };
     let sample = &song.samples[app.sample - 1];
     let line = Line::from(vec![
-        " smpltrckr ".bold().fg(Color::Black).bg(Color::Cyan),
+        " smpltrckr ".bold().fg(th.on_accent).bg(th.accent),
         format!(" {} ", song.display_title()).bold(),
-        format!("{file}{} ", if app.session.dirty { " *" } else { "" }).fg(DIM),
+        format!("{file}{} ", if app.session.dirty { " *" } else { "" }).fg(th.dim),
         play,
         mode,
         agent,
@@ -202,31 +204,32 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
             )
         )
         .into(),
-        format!("{}  ", app.layout.name).fg(DIM),
+        format!("{}  ", app.layout.name).fg(th.dim),
         format!(
             "{}  ",
             t!("view.tempo", speed = app.tempo.0, bpm = app.tempo.1)
         )
-        .fg(Color::Yellow),
+        .fg(th.sample),
         t!(
             "view.position",
             position = format!("{:02}", app.position),
             last = format!("{:02}", song.order_list().len() - 1)
         )
         .into_owned()
-        .fg(DIM),
+        .fg(th.dim),
     ]);
     f.render_widget(line, area);
 }
 
 fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
+    let th = &app.theme;
     let p = app.pattern_index();
     let border = if app.edit_mode {
-        Color::Red
+        th.edit
     } else if app.focus == Focus::Pattern {
-        Color::Cyan
+        th.accent
     } else {
-        DIM
+        th.dim
     };
     let title = format!(" {} ", t!("view.pattern", pattern = format!("{p:02}")));
     let block = Block::bordered()
@@ -251,7 +254,7 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
     // Voice headers.
     let mut head = vec![Span::raw("   ")];
     for v in 0..channels {
-        let style = Style::new().fg(if audible(v) { Color::Cyan } else { DIM });
+        let style = Style::new().fg(if audible(v) { th.accent } else { th.dim });
         let label = format!("│ {}", t!("view.voice", voice = v + 1));
         head.push(Span::styled(pad_to(&label, width), style));
     }
@@ -269,13 +272,13 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
             }
             let row = row as usize;
             let number_style = Style::new().fg(if row.is_multiple_of(4) {
-                Color::Gray
+                th.text
             } else {
-                DIM
+                th.dim
             });
             let mut spans = vec![Span::styled(format!("{row:02} "), number_style)];
             for v in 0..channels {
-                spans.push("│ ".fg(DIM));
+                spans.push("│ ".fg(th.dim));
                 let text = cell_to_text(&pattern.rows[row][v]);
                 let cursor_field = (offset == 0 && v == app.voice && app.focus == Focus::Pattern)
                     .then_some(app.field);
@@ -283,12 +286,12 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
                     .agent_marks
                     .get(&(p, row, v))
                     .is_some_and(|t| t.elapsed() < AGENT_MARK);
-                let mut cell = cell_spans(&text, cursor_field, audible(v));
+                let mut cell = cell_spans(&text, cursor_field, audible(v), th);
                 if marked {
                     // Written by the agent lately: a green tint, like fresh paint on the hull.
                     cell = cell
                         .into_iter()
-                        .map(|span| span.bg(Color::Rgb(20, 60, 30)))
+                        .map(|span| span.bg(th.agent_mark))
                         .collect();
                 }
                 spans.extend(cell);
@@ -296,8 +299,8 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
             }
             let line = Line::from(spans);
             match (offset, app.running) {
-                (0, true) => line.style(Style::new().bg(Color::Blue)),
-                (0, false) => line.style(Style::new().bg(Color::Rgb(40, 40, 60))),
+                (0, true) => line.style(Style::new().bg(th.play_row)),
+                (0, false) => line.style(Style::new().bg(th.cursor_row)),
                 _ => line,
             }
         })
@@ -317,7 +320,7 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
             ..scopes
         };
         f.render_widget(
-            Paragraph::new(vec![Line::from("│").fg(DIM); SCOPE_HEIGHT as usize]),
+            Paragraph::new(vec![Line::from("│").fg(th.dim); SCOPE_HEIGHT as usize]),
             separator,
         );
         let scope_area = Rect {
@@ -325,7 +328,7 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
             width: (width as u16 - 2).min(scopes.right() - x - 1),
             ..scopes
         };
-        let color = if audible(v) { Color::Green } else { DIM };
+        let color = if audible(v) { th.scope } else { th.dim };
         let wave = triggered_scope(&app.audio.monitor, Some(v));
         let lines = scope(
             &wave,
@@ -338,17 +341,15 @@ fn draw_pattern(f: &mut Frame, app: &App, area: Rect) {
 
         let state = match (mixer.mute[v], mixer.solo[v]) {
             (_, true) => format!(" {} ", t!("view.solo"))
-                .fg(Color::Black)
-                .bg(Color::Yellow),
-            (true, _) => format!(" {} ", t!("view.muted"))
-                .fg(Color::White)
-                .bg(Color::Red),
+                .fg(th.on_accent)
+                .bg(th.solo),
+            (true, _) => format!(" {} ", t!("view.muted")).fg(th.strong).bg(th.edit),
             _ => "".into(),
         };
         let volume = format!("{:>3} % ", (mixer.volume[v] * 100.0).round() as u32);
         let used = 2 + volume.width() + state.content.width();
-        state_line.push("│ ".fg(DIM));
-        state_line.push(volume.fg(if audible(v) { Color::Gray } else { DIM }));
+        state_line.push("│ ".fg(th.dim));
+        state_line.push(volume.fg(if audible(v) { th.text } else { th.dim }));
         state_line.push(state);
         state_line.push(" ".repeat(width.saturating_sub(used)).into());
     }
@@ -422,16 +423,21 @@ fn scope(
 }
 
 /// The pieces of a cell, with the cursor field in reverse video.
-fn cell_spans(text: &str, cursor: Option<Field>, audible: bool) -> Vec<Span<'static>> {
+fn cell_spans(
+    text: &str,
+    cursor: Option<Field>,
+    audible: bool,
+    theme: &Theme,
+) -> Vec<Span<'static>> {
     let chars: Vec<char> = text.chars().collect();
     let part = |range: std::ops::Range<usize>| chars[range].iter().collect::<String>();
     let parts = [
-        (part(0..3), Color::White, Field::Note),
-        (part(4..5), Color::Yellow, Field::SampleTens),
-        (part(5..6), Color::Yellow, Field::SampleUnits),
-        (part(7..8), Color::Magenta, Field::Effect),
-        (part(8..9), Color::Magenta, Field::ParamHigh),
-        (part(9..10), Color::Magenta, Field::ParamLow),
+        (part(0..3), theme.strong, Field::Note),
+        (part(4..5), theme.sample, Field::SampleTens),
+        (part(5..6), theme.sample, Field::SampleUnits),
+        (part(7..8), theme.effect, Field::Effect),
+        (part(8..9), theme.effect, Field::ParamHigh),
+        (part(9..10), theme.effect, Field::ParamLow),
     ];
     let mut spans = Vec::new();
     for (i, (s, color, field)) in parts.into_iter().enumerate() {
@@ -439,7 +445,7 @@ fn cell_spans(text: &str, cursor: Option<Field>, audible: bool) -> Vec<Span<'sta
             spans.push(" ".into());
         }
         let empty = s.chars().all(|c| c == '.');
-        let mut style = Style::new().fg(if empty || !audible { DIM } else { color });
+        let mut style = Style::new().fg(if empty || !audible { theme.dim } else { color });
         if cursor == Some(field) {
             style = style.add_modifier(Modifier::REVERSED);
         }
@@ -449,16 +455,16 @@ fn cell_spans(text: &str, cursor: Option<Field>, audible: bool) -> Vec<Span<'sta
 }
 
 /// Horizontal level bar, to an eighth of a character.
-fn meter(level: f32, width: usize, active: bool) -> Vec<Span<'static>> {
+fn meter(level: f32, width: usize, active: bool, theme: &Theme) -> Vec<Span<'static>> {
     const EIGHTHS: [char; 8] = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉'];
     let filled = (level.clamp(0.0, 1.0) * width as f32 * 8.0).round() as usize;
     (0..width)
         .map(|i| {
             let color = match (active, i * 4 / width.max(1)) {
-                (false, _) => DIM,
-                (_, 0 | 1) => Color::Green,
-                (_, 2) => Color::Yellow,
-                _ => Color::Red,
+                (false, _) => theme.dim,
+                (_, 0 | 1) => theme.meter_low,
+                (_, 2) => theme.meter_mid,
+                _ => theme.meter_high,
             };
             let c = match filled.saturating_sub(i * 8) {
                 0 => '·',
@@ -467,7 +473,7 @@ fn meter(level: f32, width: usize, active: bool) -> Vec<Span<'static>> {
             };
             Span::styled(
                 c.to_string(),
-                Style::new().fg(if c == '·' { DIM } else { color }),
+                Style::new().fg(if c == '·' { theme.dim } else { color }),
             )
         })
         .collect()
@@ -477,6 +483,7 @@ fn draw_orders(f: &mut Frame, app: &App, area: Rect) {
     let block = panel(
         format!(" {} ", t!("view.orders")),
         app.focus == Focus::Orders,
+        &app.theme,
     );
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -493,7 +500,7 @@ fn draw_orders(f: &mut Frame, app: &App, area: Rect) {
                 t!("view.pattern", pattern = format!("{p:02}"))
             ));
             if i == app.position {
-                line.style(Style::new().bg(Color::Rgb(40, 40, 60)).bold())
+                line.style(Style::new().bg(app.theme.cursor_row).bold())
             } else {
                 line
             }
@@ -506,6 +513,7 @@ fn draw_samples(f: &mut Frame, app: &App, area: Rect) {
     let block = panel(
         format!(" {} ", t!("view.samples")),
         app.focus == Focus::Samples,
+        &app.theme,
     );
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -519,9 +527,9 @@ fn draw_samples(f: &mut Frame, app: &App, area: Rect) {
         .map(|(i, s)| {
             let empty = s.data.is_empty();
             let text = format!("{:02} {:<16.16} {:>2}", i + 1, s.display_name(), s.volume);
-            let line = Line::from(text).fg(if empty { DIM } else { Color::Gray });
+            let line = Line::from(text).fg(if empty { app.theme.dim } else { app.theme.text });
             if i + 1 == app.sample {
-                line.style(Style::new().bg(Color::Rgb(40, 40, 60)).bold())
+                line.style(Style::new().bg(app.theme.cursor_row).bold())
             } else {
                 line
             }
@@ -531,7 +539,7 @@ fn draw_samples(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_master(f: &mut Frame, app: &App, area: Rect) {
-    let block = panel(" master ".into(), false);
+    let block = panel(" master ".into(), false, &app.theme);
     let inner = block.inner(area);
     f.render_widget(block, area);
     let [wave, bar] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
@@ -541,12 +549,12 @@ fn draw_master(f: &mut Frame, app: &App, area: Rect) {
         wave.width as usize,
         wave.height as usize,
         MASTER_SCOPE_GAIN,
-        Color::Cyan,
+        app.theme.master,
     );
     f.render_widget(Paragraph::new(lines), wave);
     let level = app.audio.monitor.level(None);
     f.render_widget(
-        Line::from(meter(level * 2.0, bar.width as usize, true)),
+        Line::from(meter(level * 2.0, bar.width as usize, true, &app.theme)),
         bar,
     );
 }
@@ -561,7 +569,7 @@ fn scroll(selected: usize, len: usize, height: usize) -> usize {
 }
 
 /// Lines of a help page: keys, or effects.
-fn help_lines(page: usize) -> Vec<Line<'static>> {
+fn help_lines(page: usize, theme: &Theme) -> Vec<Line<'static>> {
     let rows: Vec<(String, String)> = if page == 0 {
         HELP.iter()
             .map(|id| {
@@ -583,9 +591,9 @@ fn help_lines(page: usize) -> Vec<Line<'static>> {
     };
     let key_width = rows.iter().map(|(k, _)| k.width()).max().unwrap_or(0) + 2;
     let color = if page == 0 {
-        Color::Cyan
+        theme.accent
     } else {
-        Color::Magenta
+        theme.effect
     };
     rows.into_iter()
         .map(|(k, what)| Line::from(vec![pad_to(&k, key_width).fg(color), what.into()]))
@@ -593,6 +601,7 @@ fn help_lines(page: usize) -> Vec<Line<'static>> {
 }
 
 fn draw_dialog(f: &mut Frame, app: &App, dialog: &Dialog) {
+    let th = &app.theme;
     let area = f.area();
     let (title, lines, width): (String, Vec<Line>, u16) =
         match dialog {
@@ -602,7 +611,7 @@ fn draw_dialog(f: &mut Frame, app: &App, dialog: &Dialog) {
                 } else {
                     t!("dialog.help_effects")
                 };
-                (format!(" {title} "), help_lines(*page), 100)
+                (format!(" {title} "), help_lines(*page, th), 100)
             }
             Dialog::Journal => {
                 let journal = app.session.editor.journal();
@@ -616,11 +625,11 @@ fn draw_dialog(f: &mut Frame, app: &App, dialog: &Dialog) {
                             .map_or(0, |d| d.as_secs());
                         let time = crate::editor::format_time(secs);
                         let (who, color) = match e.origin {
-                            Origin::Agent => (t!("journal.agent"), Color::Green),
-                            Origin::Keyboard => (t!("journal.keyboard"), Color::Gray),
+                            Origin::Agent => (t!("journal.agent"), th.agent),
+                            Origin::Keyboard => (t!("journal.keyboard"), th.text),
                         };
                         Line::from(vec![
-                            format!("{} ", &time[11..19]).fg(DIM),
+                            format!("{} ", &time[11..19]).fg(th.dim),
                             pad_to(&who, 12).fg(color),
                             e.text.clone().fg(color),
                         ])
@@ -629,7 +638,7 @@ fn draw_dialog(f: &mut Frame, app: &App, dialog: &Dialog) {
                 (format!(" {} ", t!("dialog.journal")), lines, 100)
             }
             Dialog::Prompt(p) => {
-                let lines = vec![Line::from(vec![p.text.clone().into(), "█".fg(Color::Cyan)])];
+                let lines = vec![Line::from(vec![p.text.clone().into(), "█".fg(th.accent)])];
                 (
                     format!(" {} — {} ", p.label, t!("dialog.prompt_keys")),
                     lines,
@@ -644,7 +653,7 @@ fn draw_dialog(f: &mut Frame, app: &App, dialog: &Dialog) {
                     .map(|(i, item)| {
                         let line = Line::from(format!(" {item}"));
                         if i == c.selected {
-                            line.style(Style::new().bg(Color::Blue))
+                            line.style(Style::new().bg(th.play_row))
                         } else {
                             line
                         }
@@ -655,7 +664,7 @@ fn draw_dialog(f: &mut Frame, app: &App, dialog: &Dialog) {
             Dialog::Browser(b) => {
                 let visible = (area.height.saturating_sub(8)) as usize;
                 let first = scroll(b.selected, b.entries.len(), visible);
-                let mut lines = vec![Line::from(b.dir.display().to_string()).fg(DIM)];
+                let mut lines = vec![Line::from(b.dir.display().to_string()).fg(th.dim)];
                 lines.extend(b.entries.iter().enumerate().skip(first).take(visible).map(
                     |(i, e)| {
                         let text = if e.is_dir {
@@ -663,10 +672,9 @@ fn draw_dialog(f: &mut Frame, app: &App, dialog: &Dialog) {
                         } else {
                             format!(" {}", e.name)
                         };
-                        let line =
-                            Line::from(text).fg(if e.is_dir { Color::Cyan } else { Color::Gray });
+                        let line = Line::from(text).fg(if e.is_dir { th.accent } else { th.text });
                         if i == b.selected {
-                            line.style(Style::new().bg(Color::Blue))
+                            line.style(Style::new().bg(th.play_row))
                         } else {
                             line
                         }
@@ -692,7 +700,7 @@ fn draw_dialog(f: &mut Frame, app: &App, dialog: &Dialog) {
         Paragraph::new(lines).block(
             Block::bordered()
                 .title(title)
-                .border_style(Style::new().fg(Color::Cyan)),
+                .border_style(Style::new().fg(th.accent)),
         ),
         rect,
     );
