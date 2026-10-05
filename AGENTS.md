@@ -53,6 +53,11 @@ mise exec -- cargo test                  # all must pass before a commit, as in 
 **Testing the TUI**: never run it in your own terminal. Use a pty (see `scripts/record-demo.py`) with
 `SMPLTRCKR_SOCKET` pointing to a scratch file, so you do not collide with JB's open editor.
 
+**Use the MCP server.** It is smpltrckr's flagship feature: use the `smpltrckr` tools (from
+`.mcp.json`) whenever they fit, to compose, inspect a song or check a change, without asking first.
+Call `ping` to know whether you work live on JB's open song or headless, and read
+`reference(topic="guide")` first. The server runs `target/debug/smpltrckr`: rebuild after code changes.
+
 ## Architecture
 
 ```
