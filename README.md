@@ -13,7 +13,7 @@
 *Reads and writes `.mod` files byte for byte · its own ProTracker replayer · braille scopes with sparks ·
 an MCP server so an agent can compose, alone or live with you · English, French and Japanese.*
 
-[Français](README.fr.md) · by [@jbheren](https://github.com/jbheren)
+[Français](README.fr.md) · [日本語](README.ja.md) · by [@jbheren](https://github.com/jbheren)
 
 </div>
 

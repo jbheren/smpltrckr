@@ -13,7 +13,7 @@
 *Lit et écrit les `.mod` à l'octet près · son propre replayer ProTracker · oscilloscopes en Braille et
 particules · un serveur MCP pour qu'un agent compose, seul ou en direct avec toi · français, anglais, japonais.*
 
-[English](README.md) · par [@jbheren](https://github.com/jbheren)
+[English](README.md) · [日本語](README.ja.md) · par [@jbheren](https://github.com/jbheren)
 
 </div>
 
