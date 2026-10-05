@@ -443,7 +443,6 @@ smpltrckr play sessions/2026-10-03-kaze-no-uta/kaze-no-uta.mod
 Ce qui fonctionne aujourd'hui : lecture et écriture des `.mod`, replayer, éditeur au clavier, agent
 seul et en direct, thèmes, trois langues. La suite :
 
-- le format **XM** (plus de voies, instruments avec enveloppes, samples 16 bits) ;
 - des essais sur macOS ; Windows plus tard ;
 - un petit éditeur de samples.
 

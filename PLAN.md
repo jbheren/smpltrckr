@@ -19,7 +19,7 @@ Ce document est une **proposition à discuter**. Les choix marqués « recommand
 - **Pas d'émulation de Paula.** Une lecture propre suffit, sans chercher le « grain » exact de l'Amiga.
 - **4 voies par défaut.** Un nouveau morceau a 4 voies. On accepte plus de voies seulement quand un `.mod` existant en contient (variantes `6CHN`, `8CHN`…).
 - **Les samples sont dans le `.mod`.** Pour composer, on peut charger des fichiers **WAV et AIFF**, comme dans ProTracker ou FT2, en restant simple.
-- **XM serait un vrai plus.** Ce n'est pas dans le MVP, mais le modèle de données ne doit pas le rendre impossible.
+- ~~**XM serait un vrai plus.**~~ **Pas de XM** (05/10/2026). JB tient à la simplicité à laquelle on a abouti : le `.mod` permet déjà de belles choses et il a son charme à lui.
 - **Le nom `smpltrckr` reste**, au moins pour l'instant.
 - **On commence avec Claude** comme agent. Un modèle local pourra être testé plus tard (cf. [[Stack IA locale]]).
 - **Interface en français, anglais et japonais** (03/10/2026). La langue suit le système (`LANG`…), et `--lang fr|en|ja` ou `SMPLTRCKR_LANG` permettent de l'imposer. Le côté agent (outils MCP, guide, messages) reste en anglais. Le code est commenté en anglais, avec de temps en temps un clin d'œil en français, ton hacker et pirate, sans en faire trop.
@@ -78,6 +78,8 @@ Ce document est une **proposition à discuter**. Les choix marqués « recommand
 | `mcp` | Outils MCP qui traduisent les appels en commandes, plus des ressources (référence des effets, état du morceau). |
 
 ### Préparer le XM sans le coder
+
+*Le XM est abandonné depuis le 05/10/2026 (voir « Décisions de JB »). Ces choix de modèle restent utiles pour les `.mod` à plus de 4 voies.*
 
 Pour le MVP, on ne code rien de spécifique au XM. On fait seulement trois choix de modèle qui laissent la porte ouverte :
 - le nombre de voies et le nombre de lignes par pattern sont variables, pas fixés à 4 et 64 ;
@@ -280,12 +282,8 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 - Retouches demandées par JB : nom SMPLTRCKR en capitales et en dégradé dans l'en-tête, une ligne vide entre l'en-tête et le pattern, auteur (@jbheren) sur l'accueil et en bas à droite, liste des samples alignée sur la liste d'ordre.
 - 76 tests. La capture texte de l'accueil est dans un test ignoré (`cargo test snapshot_show -- --ignored --nocapture`).
 
-### Phase 7 — Le XM
-- Lecture et écriture du `.xm`, avec un aller-retour à l'octet près comme pour le `.mod`.
-- Instruments (enveloppes de volume et de panoramique, plusieurs samples par instrument), samples 16 bits, jusqu'à 32 voies, colonne de volume.
-- Second replayer façon FT2, comparé à libopenmpt et à ft2-clone.
-- Outils MCP et TUI étendus aux instruments.
-- **Jalon :** l'agent compose un `.xm` qui se lit correctement dans ft2-clone ou MilkyTracker.
+### Phase 7 — Le XM (abandonnée le 05/10/2026)
+- On garde le `.mod` seul, pour sa simplicité et son charme. Le plan prévoyait la lecture et l'écriture du `.xm`, les instruments à enveloppes, les samples 16 bits, jusqu'à 32 voies et un second replayer façon FT2.
 
 ### Phase 8 — Plus tard (à trier)
 - **Publication comme plugin Omarchy** : voir comment Omarchy distribue les applications tierces (paquet AUR, entrée de menu, lanceur, thème déjà suivi via `colors.toml`) et ce qu'il faut fournir.
@@ -303,7 +301,6 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 - Protocole clavier de kitty.
 - Éditeur de samples minimal (couper, normaliser, boucle), rééchantillonnage à l'import.
 - Outil `analyze` pour l'agent.
-- Format IT.
 - Lecture sur le Pirate Audio.
 
 ---

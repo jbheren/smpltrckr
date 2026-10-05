@@ -438,7 +438,6 @@ smpltrckr play sessions/2026-10-03-kaze-no-uta/kaze-no-uta.mod
 Working today: `.mod` reading and writing, replayer, keyboard editor, solo and live agent, themes,
 three languages. Next:
 
-- the **XM** format (more voices, instruments with envelopes, 16-bit samples);
 - macOS testing; Windows later;
 - a small sample editor.
 
