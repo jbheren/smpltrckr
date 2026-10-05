@@ -10,7 +10,6 @@ and what each phase delivered. `README.md` describes the program as users see it
 - Local `main` may be ahead of `origin/main`: check with `git status` / `git log origin/main..`.
   Commits stay local until JB asks for a push.
 - Next, in no fixed order and only when JB asks:
-  - **Phase 7: XM** (instruments, envelopes, 16-bit samples, up to 32 voices, FT2-style replayer).
   - **Omarchy plugin**: find out how Omarchy ships third-party apps (AUR package, menu entry, launcher).
   - **macOS** (untested; Option key, Mac AZERTY) and **Windows** (local HTTP transport with a token
     instead of the Unix socket).
