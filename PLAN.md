@@ -291,6 +291,15 @@ L'agent n'entend pas. Une piste pour plus tard : un outil `analyze` qui rend le 
 - **Publication comme plugin Omarchy** : voir comment Omarchy distribue les applications tierces (paquet AUR, entrée de menu, lanceur, thème déjà suivi via `colors.toml`) et ce qu'il faut fournir.
 - macOS : essais, touche Option, AZERTY Mac, binaire dans la release (reporté après la v0.1.0).
 - Windows : un transport HTTP local avec jeton à la place du socket Unix.
+- **Collaboration avec un autre humain (à étudier)** : deux personnes (et leurs agents) sur le même morceau, chacune dans sa TUI. Question de fond : établir le lien sans passer par un service tiers en ligne.
+  - Modèle : on garde un seul propriétaire du morceau. L'hôte possède la `Session`, l'invité envoie ses modifications comme des `Job`, au même titre que l'agent, et reçoit en retour les `Change` appliqués pour mettre à jour sa copie. Nouvelle origine `Remote` dans le journal. Pas de CRDT tant qu'un hôte suffit. Chacun joue le son en local ; seuls la position de lecture et le tempo se synchronisent.
+  - Transport sans tiers, du plus simple au plus ambitieux :
+    1. Réseau local : connexion TCP directe, avec découverte mDNS possible.
+    2. SSH : l'invité fait suivre le socket de l'hôte (`ssh -L local.sock:/run/user/<uid>/smpltrckr.sock hôte`). Rien à coder côté réseau, chiffrement et authentification fournis par SSH. Il faut que l'hôte soit joignable (IPv6 public, ou port ouvert sur la box).
+    3. Connexion directe sur Internet : IPv6 de bout en bout quand les deux l'ont, sinon ouverture de port par UPnP / NAT-PMP. Échange d'un code ou d'une clé hors bande (message, téléphone).
+    4. Réseau privé : WireGuard entre les deux machines (un des deux doit être joignable), ou Tailscale avec Headscale auto-hébergé.
+  - Limite à garder en tête : quand les deux sont derrière un NAT sans IPv6, la traversée (« hole punching ») demande un point de rendez-vous public, même minuscule. Pistes à évaluer : un relais qu'on héberge soi-même (iroh, ou un petit serveur sur un VPS), magic-wormhole avec son propre serveur de rendez-vous.
+  - À trancher avant de coder : chiffrement et authentification de l'invité (clé partagée, code à usage unique), droits de l'invité (édition complète ou lecture seule), comportement à la déconnexion.
 - Protocole clavier de kitty.
 - Éditeur de samples minimal (couper, normaliser, boucle), rééchantillonnage à l'import.
 - Outil `analyze` pour l'agent.
